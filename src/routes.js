@@ -3,7 +3,7 @@ import { Router } from 'express';
 // Mengimpor helper password, JWT, authentication, dan authorization.
 import { comparePassword, hashPassword, signToken, authenticate, authorize } from './auth.js';
 // Mengimpor helper query PostgreSQL.
-import { pool, query } from './db.js';
+import { query } from './db.js';
 // Mengimpor schema validasi request.
 import { employeeSchema, jobHistorySchema, loginSchema, personnelSchema, registerSchema, validate } from './validation.js';
 // Membuat router yang akan dipasang di prefix /api/v1.
