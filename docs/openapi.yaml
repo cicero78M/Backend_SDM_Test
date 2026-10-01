@@ -71,6 +71,10 @@ paths:
       responses: { '201': { description: Personel berhasil dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
   /personel/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Detail personel dalam scope user
+      responses: { '200': { description: Detail personel }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Tidak ditemukan } }
     put:
       security: [{ bearerAuth: [] }]
       summary: Memperbarui personel dalam scope
@@ -80,8 +84,21 @@ paths:
       responses: { '200': { description: Personel diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
     delete:
       security: [{ bearerAuth: [] }]
-      summary: Menghapus personel (administrator)
+      summary: Menghapus personel dalam scope user yang berwenang
       responses: { '204': { description: Personel dihapus }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/users/{id}/scopes:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Melihat scope Satker user (admin)
+      responses: { '200': { description: Daftar scope user }, '403': { $ref: '#/components/responses/Forbidden' } }
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Mengganti scope Satker user (admin)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [id_satker], properties: { id_satker: { type: array, items: { type: integer, minimum: 1 }, maxItems: 100 } } } } }
+      responses: { '200': { description: Scope diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
   /personel/{id}/profile:
     get:
       security: [{ bearerAuth: [] }]
@@ -122,17 +139,20 @@ components:
     LoginRequest: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string } } }
     PegawaiRequest:
       type: object
-      required: [nip, nik, nama, jenis_kelamin, tanggal_lahir, tanggal_masuk, id_unit, id_jabatan, id_golongan]
+      required: [nip, jenis_personel, jenis_identitas, nik, nama, jenis_kelamin, tanggal_lahir, id_unit, id_jabatan]
       properties:
-        nip: { type: string, pattern: '^\d{18}$' }
+        nip: { type: string, pattern: '^\d{8,18}$', description: NRP 8 digit atau NIP 18 digit }
+        jenis_personel: { type: string, enum: [POLRI, ASN, PPPK, HONORER, LAINNYA] }
+        jenis_identitas: { type: string, enum: [NRP, NIP] }
         nik: { type: string, pattern: '^\d{16}$' }
         nama: { type: string }
         jenis_kelamin: { type: string, enum: [L, P] }
         tanggal_lahir: { type: string, format: date }
-        tanggal_masuk: { type: string, format: date }
+        tanggal_masuk: { type: string, format: date, nullable: true }
         id_unit: { type: integer }
         id_jabatan: { type: integer }
-        id_golongan: { type: integer }
+        id_golongan: { type: integer, nullable: true }
+        pangkat: { type: string, maxLength: 80, nullable: true }
     PersonelRequest:
       allOf:
         - $ref: '#/components/schemas/PegawaiRequest'

@@ -34,4 +34,4 @@ app.use((error, _req, res, _next) => {
   return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
 });
 // Menjalankan server dan memberi informasi URL lokal.
-app.listen(port, () => console.log(`REST API berjalan di http://localhost:${port}`));
+app.listen(port, '127.0.0.1', () => console.log(`REST API berjalan di http://localhost:${port}`));

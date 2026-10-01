@@ -1,0 +1,39 @@
+{
+  "info": {
+    "name": "Merit System Personel Polri",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Alur smoke test API: login, daftar personel, profil, dan administrasi scope. Gunakan hanya pada environment demo."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api/v1" },
+    { "key": "server_url", "value": "http://localhost:3000" },
+    { "key": "username", "value": "demo_admin_ssdm" },
+    { "key": "password", "value": "Demo-Admin-2026!" },
+    { "key": "token", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "personel_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{server_url}}/health" }
+    },
+    {
+      "name": "Login demo",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Login berhasil', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.collectionVariables.set('token', body.token);", "pm.collectionVariables.set('user_id', body.user.id_user || '');"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}" }, "url": "{{base_url}}/auth/login" }
+    },
+    {
+      "name": "Daftar personel sesuai scope",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel?page=1&limit=10" }
+    },
+    {
+      "name": "Profil personel",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}/profile" }
+    },
+    {
+      "name": "Scope user",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/auth/users/{{user_id}}/scopes" }
+    }
+  ]
+}

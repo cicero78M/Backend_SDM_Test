@@ -2,6 +2,7 @@
 import bcrypt from 'bcryptjs';
 // Mengimpor JSON Web Token untuk authentication berbasis token.
 import jwt from 'jsonwebtoken';
+import { createHash } from 'node:crypto';
 // Mengimpor helper query untuk memeriksa user di database.
 import { query } from './db.js';
 // Mengambil secret untuk menandatangani JWT.
@@ -12,6 +13,10 @@ if (!secret || secret.length < 32) throw new Error('JWT_SECRET wajib diisi dan m
 export const hashPassword = (password) => bcrypt.hash(password, 12);
 // Membandingkan password plain text dengan hash tersimpan.
 export const comparePassword = (password, hash) => bcrypt.compare(password, hash);
+// Password reset token hanya disimpan sebagai SHA-256 hash di database.
+export const hashResetToken = (token) => {
+  return createHash('sha256').update(token).digest('hex');
+};
 // Membuat token yang menyimpan identitas dan role user.
 export const signToken = (user) => jwt.sign({ sub: user.id_user, username: user.username, role: user.role }, secret, { expiresIn: process.env.JWT_EXPIRES_IN || '1h' });
 // Middleware yang memastikan request memiliki token valid dan user aktif.
