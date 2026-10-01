@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: CRUD App Test - REST API
+  title: Backend SDM Test - REST API
   version: 1.0.0
   description: API CRUD data pegawai dengan JWT authentication dan role-based authorization.
 servers:

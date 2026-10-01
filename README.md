@@ -1,4 +1,4 @@
-# CRUD App Test — REST API Pegawai
+# Backend SDM Test — REST API Pegawai
 
 REST API untuk pengelolaan data pegawai sebagai persiapan seleksi tahap 1. Implementasi menggunakan PostgreSQL dan schema domain kepegawaian.
 

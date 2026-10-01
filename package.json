@@ -1,5 +1,5 @@
 {
-  "name": "crud-app-test",
+  "name": "backend-sdm-test",
   "version": "0.1.0",
   "private": true,
   "description": "REST API CRUD pegawai berbasis PostgreSQL untuk seleksi tahap 1.",
