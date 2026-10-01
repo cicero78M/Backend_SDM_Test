@@ -110,6 +110,10 @@ Semua endpoint selain register/login memerlukan header `Authorization: Bearer <t
 
 - `POST /api/v1/auth/register` — registrasi user baru; role awal selalu `viewer`.
 - `POST /api/v1/auth/login` — login dan memperoleh JWT.
+- `GET /api/v1/auth/registrations/pending` — daftar registrasi yang menunggu approval; hanya role `admin` pertama.
+- `PATCH /api/v1/auth/registrations/:id` — menyetujui atau menolak registrasi serta menetapkan role; hanya role `admin` pertama.
+- `GET /api/v1/auth/registrations/history` — riwayat keputusan approval; hanya role `admin` pertama.
+- `GET /api/v1/auth/users/approved` — daftar user aktif untuk administrasi; admin/admin SSDM.
 
 ### Pegawai
 
@@ -221,7 +225,7 @@ Runner memverifikasi health check, login Admin SSDM/Operator Polda/Operator Satk
 | Operator Satker | `operator_satker` | Satker yang ditetapkan admin | CRUD data dalam scope |
 | Viewer | `viewer` | Sesuai kebijakan aplikasi | Baca terbatas |
 
-Catatan: approval pendaftaran tetap sengaja dibatasi role `admin` pertama. Admin SSDM dapat mengelola user aktif, role, password, dan scope setelah akun tersedia.
+Catatan: approval pendaftaran tetap sengaja dibatasi role `admin` pertama. Admin SSDM dapat mengelola user aktif, role, password, dan scope setelah akun tersedia, tetapi tidak dapat memproses registrasi pending.
 
 ## Repository terkait
 
