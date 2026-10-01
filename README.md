@@ -23,9 +23,9 @@ Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi re
 | Fondasi API | Selesai | Express, PostgreSQL, CRUD pegawai, JWT, bcrypt, Zod, OpenAPI |
 | Domain karier | Selesai | `riwayat_jabatan`, fungsi, status/nivelering jabatan, profil kronologis |
 | Scope organisasi | Selesai | Satker/Polda, relasi user-scope, pembatasan data operator, transaksi scope |
-| Administrasi | Selesai untuk prototype | User/role, scope, audit perubahan, UI scope, dan matriks Admin SSDM |
+| Administrasi | Selesai untuk prototype | User/role, approval registrasi admin pertama, scope, audit perubahan, dan UI Administrasi Akses |
 | Integrasi frontend | Selesai untuk prototype | Login, visualisasi, personel, profil, histori, kualifikasi, form input/edit, dan UI scope |
-| Dashboard analitik | Selesai untuk prototype | Agregasi status, golongan/pangkat, pendidikan, diklat, mutasi, lama dinas, dan proyeksi pensiun berbasis scope |
+| Dashboard analitik | Selesai untuk prototype | Agregasi status, golongan/pangkat POLRI dan ASN, pendidikan, diklat berulang, mutasi berulang, kualitas data, usia, lama dinas, dan proyeksi pensiun berbasis scope |
 | Pengujian | Lulus | 10 test unit/authorization/validasi lulus; E2E demo tiga persona tersedia |
 
 Rincian target dan kriteria penerimaan tersedia di [`docs/RENCANA_PENGEMBANGAN.md`](docs/RENCANA_PENGEMBANGAN.md).
