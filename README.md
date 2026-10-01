@@ -25,7 +25,7 @@ Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi re
 | Scope organisasi | Selesai | Satker/Polda, relasi user-scope, pembatasan data operator, transaksi scope |
 | Administrasi | Selesai untuk prototype | User/role, scope, audit perubahan, UI scope, dan matriks Admin SSDM |
 | Integrasi frontend | Selesai untuk prototype | Login, visualisasi, personel, profil, histori, kualifikasi, form input/edit, dan UI scope |
-| Dashboard analitik | Selesai untuk prototype | Agregasi status, pendidikan, diklat, mutasi, lama dinas, dan proyeksi pensiun berbasis scope |
+| Dashboard analitik | Selesai untuk prototype | Agregasi status, golongan/pangkat, pendidikan, diklat, mutasi, lama dinas, dan proyeksi pensiun berbasis scope |
 | Pengujian | Lulus | 10 test unit/authorization/validasi lulus; E2E demo tiga persona tersedia |
 
 Rincian target dan kriteria penerimaan tersedia di [`docs/RENCANA_PENGEMBANGAN.md`](docs/RENCANA_PENGEMBANGAN.md).
@@ -132,7 +132,7 @@ Endpoint berikut tersedia setelah migration schema Merit System diterapkan:
 - Endpoint master data fungsi, jabatan, level/nivelering, status jabatan, dan Satker.
 - `GET /api/v1/auth/users/:id/scopes` — melihat scope Satker user oleh admin.
 - `PUT /api/v1/auth/users/:id/scopes` — mengganti scope Satker user secara transaksional oleh admin.
-- `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user.
+- `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, golongan/pangkat, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user.
 
 Riwayat jabatan mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal berakhir, nivelering, status, dan keterangan. Validasi mencegah format payload yang salah; constraint database mencegah tanggal terbalik dan lebih dari satu histori aktif untuk personel yang sama.
 
