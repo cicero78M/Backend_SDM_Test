@@ -132,7 +132,7 @@ Endpoint berikut tersedia setelah migration schema Merit System diterapkan:
 - Endpoint master data fungsi, jabatan, level/nivelering, status jabatan, dan Satker.
 - `GET /api/v1/auth/users/:id/scopes` — melihat scope Satker user oleh admin.
 - `PUT /api/v1/auth/users/:id/scopes` — mengganti scope Satker user secara transaksional oleh admin.
-- `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, golongan/pangkat, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user. Ringkasan diklat dan mutasi mencakup personel yang pernah, belum pernah, serta memiliki lebih dari satu riwayat.
+- `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, golongan/pangkat terpisah untuk POLRI dan ASN, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user. Ringkasan diklat dan mutasi mencakup personel yang pernah, belum pernah, serta memiliki lebih dari satu riwayat.
 
 Riwayat jabatan mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal berakhir, nivelering, status, dan keterangan. Validasi mencegah format payload yang salah; constraint database mencegah tanggal terbalik dan lebih dari satu histori aktif untuk personel yang sama.
 
