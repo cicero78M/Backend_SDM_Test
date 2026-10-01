@@ -16,7 +16,7 @@ Aplikasi mendukung pengelolaan data personel secara sistematis agar Admin SSDM d
 
 ## Status prototype
 
-Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi request, dan schema PostgreSQL. Pengembangan menuju domain Merit System dilakukan bertahap:
+Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi request, dan schema PostgreSQL. Database staging pada server terverifikasi sebagai database `postgres`; data yang terdeteksi tetap dipertahankan. Pengembangan menuju domain Merit System dilakukan bertahap:
 
 | Tahap | Status | Cakupan |
 |---|---|---|
@@ -130,6 +130,8 @@ Riwayat jabatan wajib mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal 
 
 ## Struktur database saat ini
 
+Database staging yang telah diverifikasi memuat 300 baris `pegawai`, 150 baris `staging_pegawai`, 398 riwayat pendidikan, 416 riwayat diklat, dan 150 riwayat mutasi. Status validasi staging: 113 `VALID` dan 37 `TINDAK_LANJUT`.
+
 `db/schema.sql` saat ini memuat:
 
 - `pegawai` — data dasar personel dan foreign key ke master;
@@ -138,7 +140,7 @@ Riwayat jabatan wajib mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal 
 - `golongan` — master pangkat/golongan;
 - `users` — kredensial, bcrypt hash, role, dan status aktif.
 
-Migration `db/migrations/002_merit_system_staging.sql` menambahkan `riwayat_jabatan`, master fungsi/status/level jabatan, `satker`, relasi `user_scope`, `audit_log`, serta kolom validasi staging. Migration bersifat additive dan tidak menghapus data staging lama. Constraint `NOT NULL`, `CHECK`, `UNIQUE`, foreign key, index, serta transaksi menjaga konsistensi data.
+Migration `db/migrations/002_merit_system_staging.sql` telah diterapkan pada database staging `postgres`. Migration menambahkan `riwayat_jabatan`, master fungsi/status/level jabatan, `satker`, relasi `user_scope`, `audit_log`, serta kolom validasi staging. Migration bersifat additive dan tidak menghapus data staging lama. Constraint `NOT NULL`, `CHECK`, `UNIQUE`, foreign key, index, serta transaksi menjaga konsistensi data.
 
 Sebelum menjalankan migration, pastikan `DATABASE_URL` benar-benar menunjuk database staging. Verifikasi tanpa menampilkan password:
 
