@@ -92,6 +92,8 @@ JWT_EXPIRES_IN=1h
 npm install
 createdb backend_sdm
 psql "$DATABASE_URL" -f db/schema.sql
+# Untuk database staging yang sudah berisi schema dasar, jalankan migration additive:
+psql "$DATABASE_URL" -f db/migrations/002_merit_system_staging.sql
 npm run dev
 ```
 
@@ -136,7 +138,14 @@ Riwayat jabatan wajib mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal 
 - `golongan` — master pangkat/golongan;
 - `users` — kredensial, bcrypt hash, role, dan status aktif.
 
-Target berikutnya menambahkan `riwayat_jabatan`, master fungsi/status/level jabatan, Satker dan relasi scope user. Constraint `NOT NULL`, `CHECK`, `UNIQUE`, foreign key, index, serta transaksi akan menjaga konsistensi data.
+Migration `db/migrations/002_merit_system_staging.sql` menambahkan `riwayat_jabatan`, master fungsi/status/level jabatan, `satker`, relasi `user_scope`, `audit_log`, serta kolom validasi staging. Migration bersifat additive dan tidak menghapus data staging lama. Constraint `NOT NULL`, `CHECK`, `UNIQUE`, foreign key, index, serta transaksi menjaga konsistensi data.
+
+Sebelum menjalankan migration, pastikan `DATABASE_URL` benar-benar menunjuk database staging. Verifikasi tanpa menampilkan password:
+
+```bash
+psql "$DATABASE_URL" -X -Atc "SELECT current_database(), current_user;"
+psql "$DATABASE_URL" -X -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name;"
+```
 
 ## Dokumentasi API dan pengujian
 
