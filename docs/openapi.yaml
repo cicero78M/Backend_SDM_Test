@@ -1,0 +1,77 @@
+openapi: 3.0.3
+info:
+  title: CRUD App Test - REST API
+  version: 1.0.0
+  description: API CRUD data pegawai dengan JWT authentication dan role-based authorization.
+servers:
+  - url: http://localhost:3000/api/v1
+paths:
+  /auth/register:
+    post:
+      summary: Registrasi user
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } }
+      responses: { '201': { description: User berhasil dibuat }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /auth/login:
+    post:
+      summary: Login dan mendapatkan JWT
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } }
+      responses: { '200': { description: Login berhasil }, '401': { description: Kredensial salah } }
+  /pegawai:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Daftar pegawai dengan pagination dan pencarian
+      parameters:
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 10, maximum: 100 } }
+        - { in: query, name: search, schema: { type: string } }
+      responses: { '200': { description: Daftar pegawai }, '401': { $ref: '#/components/responses/Unauthorized' } }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Membuat pegawai (admin/editor)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PegawaiRequest' } } }
+      responses: { '201': { description: Data dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /pegawai/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Detail pegawai
+      responses: { '200': { description: Data pegawai }, '404': { description: Tidak ditemukan } }
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Memperbarui pegawai (admin/editor)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PegawaiRequest' } } }
+      responses: { '200': { description: Data diperbarui }, '400': { $ref: '#/components/responses/BadRequest' } }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Menghapus pegawai (admin)
+      responses: { '204': { description: Data dihapus }, '403': { $ref: '#/components/responses/Forbidden' } }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
+  schemas:
+    RegisterRequest: { type: object, required: [username, password], properties: { username: { type: string, minLength: 3 }, password: { type: string, minLength: 8 } } }
+    LoginRequest: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string } } }
+    PegawaiRequest:
+      type: object
+      required: [nip, nik, nama, jenis_kelamin, tanggal_lahir, tanggal_masuk, id_unit, id_jabatan, id_golongan]
+      properties:
+        nip: { type: string, pattern: '^\d{18}$' }
+        nik: { type: string, pattern: '^\d{16}$' }
+        nama: { type: string }
+        jenis_kelamin: { type: string, enum: [L, P] }
+        tanggal_lahir: { type: string, format: date }
+        tanggal_masuk: { type: string, format: date }
+        id_unit: { type: integer }
+        id_jabatan: { type: integer }
+        id_golongan: { type: integer }
+  responses:
+    BadRequest: { description: Request tidak valid }
+    Unauthorized: { description: Token tidak valid atau tidak ada }
+    Forbidden: { description: Permission ditolak }

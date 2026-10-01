@@ -1,5 +1,5 @@
 node_modules/
-data/*.db
-data/*.json
 .env
+coverage/
+data/*.json
 npm-debug.log*

@@ -1,0 +1,14 @@
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import dotenv from 'dotenv';
+import { router } from './routes.js';
+dotenv.config();
+const app = express();
+const port = Number(process.env.PORT || 3000);
+app.use(express.json({ limit: '100kb' }));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false }));
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.use('/api/v1', router);
+app.use((_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }));
+app.use((error, _req, res, _next) => { console.error(error); if (error.code === '23505') return res.status(409).json({ error: 'Data duplikat.' }); if (error.code === '23503') return res.status(400).json({ error: 'Referensi data tidak valid.' }); return res.status(500).json({ error: 'Terjadi kesalahan pada server.' }); });
+app.listen(port, () => console.log(`REST API berjalan di http://localhost:${port}`));

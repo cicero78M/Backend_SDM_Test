@@ -1,0 +1,6 @@
+import { z } from 'zod';
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal harus YYYY-MM-DD.');
+export const registerSchema = z.object({ username: z.string().trim().min(3).max(50), password: z.string().min(8).max(100) });
+export const loginSchema = z.object({ username: z.string().trim().min(1), password: z.string().min(1) });
+export const employeeSchema = z.object({ nip: z.string().regex(/^\d{18}$/, 'NIP harus 18 digit.'), nik: z.string().regex(/^\d{16}$/, 'NIK harus 16 digit.'), nama: z.string().trim().min(2).max(100), jenis_kelamin: z.enum(['L', 'P']), tempat_lahir: z.string().trim().max(50).optional().nullable(), tanggal_lahir: date, tanggal_masuk: date, id_unit: z.number().int().positive(), id_jabatan: z.number().int().positive(), id_golongan: z.number().int().positive(), id_atasan: z.number().int().positive().optional().nullable(), status_pegawai: z.string().trim().min(1).max(15).default('AKTIF'), batas_usia_pensiun: z.number().int().min(1).max(100).default(58) });
+export function validate(schema, input) { const result = schema.safeParse(input); return result.success ? { data: result.data } : { error: result.error.issues.map((issue) => ({ field: issue.path.join('.'), message: issue.message })) }; }
