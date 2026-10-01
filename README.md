@@ -86,7 +86,7 @@ JWT_SECRET=ganti-dengan-secret-acak-minimal-32-karakter
 JWT_EXPIRES_IN=1h
 ```
 
-`JWT_SECRET` hanya digunakan server dan tidak boleh dimasukkan ke repository, frontend, atau chat.
+`JWT_SECRET` hanya digunakan server dan tidak boleh dimasukkan ke repository atau frontend.
 
 ### Menyiapkan database dan menjalankan server
 
