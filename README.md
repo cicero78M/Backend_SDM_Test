@@ -94,6 +94,7 @@ createdb backend_sdm
 psql "$DATABASE_URL" -f db/schema.sql
 # Untuk database staging yang sudah berisi schema dasar, jalankan migration additive:
 psql "$DATABASE_URL" -f db/migrations/002_merit_system_staging.sql
+psql "$DATABASE_URL" -f db/migrations/003_grant_app_role.sql
 npm run dev
 ```
 
@@ -116,17 +117,17 @@ Semua endpoint selain register/login memerlukan header `Authorization: Bearer <t
 - `PUT /api/v1/pegawai/:id` — memperbarui pegawai; role `admin`/`editor`.
 - `DELETE /api/v1/pegawai/:id` — menghapus pegawai; role `admin` saja.
 
-## Target endpoint Merit System
+## Endpoint Merit System yang tersedia
 
-Endpoint berikut menjadi kontrak pengembangan berikutnya setelah migrasi schema dan authorization scope selesai:
+Endpoint berikut tersedia setelah migration schema Merit System diterapkan:
 
 - `GET/POST/PUT/DELETE /api/v1/personel`
 - `GET/POST/PUT/DELETE /api/v1/personel/:id/riwayat-jabatan`
 - `GET /api/v1/personel/:id/profile` — identitas, jabatan aktif, dan histori kronologis.
 - Endpoint master data fungsi, jabatan, level/nivelering, status jabatan, dan Satker.
-- Endpoint Admin SSDM untuk user dan scope organisasi.
+- Endpoint master data fungsi, jabatan, level/nivelering, status jabatan, dan Satker dikelola melalui database staging; endpoint administrasinya menjadi tahap lanjutan.
 
-Riwayat jabatan wajib mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal berakhir, nivelering, status, dan keterangan. Validasi akan mencegah tanggal terbalik serta riwayat aktif yang tumpang tindih.
+Riwayat jabatan mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal berakhir, nivelering, status, dan keterangan. Validasi mencegah format payload yang salah; constraint database mencegah tanggal terbalik dan lebih dari satu histori aktif untuk personel yang sama.
 
 ## Struktur database saat ini
 

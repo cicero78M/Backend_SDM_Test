@@ -35,6 +35,30 @@ export const employeeSchema = z.object({
   // Batas usia pensiun diberi rentang kewajaran.
   batas_usia_pensiun: z.number().int().min(1).max(100).default(58),
 });
+// Schema personel Merit System mewajibkan Satker agar data dapat dibatasi berdasarkan scope.
+export const personnelSchema = employeeSchema.extend({
+  // Satker adalah unit organisasi pemilik tanggung jawab data personel.
+  id_satker: z.number().int().positive(),
+});
+// Schema CRUD riwayat jabatan dengan tanggal mulai dan selesai yang konsisten.
+export const jobHistorySchema = z.object({
+  // Jabatan yang pernah diduduki personel.
+  id_jabatan: z.number().int().positive(),
+  // Satker tempat jabatan dijalankan.
+  id_satker: z.number().int().positive(),
+  // Fungsi jabatan boleh belum diisi jika master belum tersedia.
+  id_fungsi: z.number().int().positive().optional().nullable(),
+  // Nivelering jabatan boleh belum diisi pada data lama.
+  id_level_jabatan: z.number().int().positive().optional().nullable(),
+  // Status jabatan wajib menunjukkan status penugasan.
+  id_status_jabatan: z.number().int().positive(),
+  // Tanggal mulai wajib ISO date.
+  tanggal_mulai: date,
+  // Tanggal selesai boleh kosong untuk jabatan aktif.
+  tanggal_selesai: date.optional().nullable(),
+  // Keterangan tambahan bersifat opsional.
+  keterangan: z.string().trim().max(2000).optional().nullable(),
+});
 // Menjalankan schema dan mengubah error Zod menjadi format API yang mudah dibaca.
 export function validate(schema, input) {
   // safeParse tidak melempar exception sehingga aman dipakai di route.

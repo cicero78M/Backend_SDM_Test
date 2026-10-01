@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Backend SDM Test - REST API
   version: 1.0.0
-  description: API CRUD data pegawai dengan JWT authentication dan role-based authorization.
+  description: API Merit System Personel Polri untuk CRUD personel dan riwayat jabatan dengan JWT, validasi, role, dan scope organisasi.
 servers:
   - url: http://localhost:3000/api/v1
 paths:
@@ -53,6 +53,68 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Menghapus pegawai (admin)
       responses: { '204': { description: Data dihapus }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /personel:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Daftar personel sesuai scope user
+      parameters:
+        - { in: query, name: page, schema: { type: integer, default: 1, minimum: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 10, maximum: 100 } }
+        - { in: query, name: search, schema: { type: string } }
+      responses: { '200': { description: Daftar personel }, '401': { $ref: '#/components/responses/Unauthorized' } }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Membuat personel dalam scope Satker
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PersonelRequest' } } }
+      responses: { '201': { description: Personel berhasil dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /personel/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Memperbarui personel dalam scope
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PersonelRequest' } } }
+      responses: { '200': { description: Personel diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Menghapus personel (administrator)
+      responses: { '204': { description: Personel dihapus }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /personel/{id}/profile:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Profil personel dan histori jabatan kronologis
+      responses: { '200': { description: Profil personel }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Tidak ditemukan } }
+  /personel/{id}/riwayat-jabatan:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Daftar riwayat jabatan personel
+      responses: { '200': { description: Histori kronologis }, '403': { $ref: '#/components/responses/Forbidden' } }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Menambahkan riwayat jabatan
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RiwayatJabatanRequest' } } }
+      responses: { '201': { description: Histori dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { description: Histori aktif bertumpang tindih } }
+  /personel/{id}/riwayat-jabatan/{historyId}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+      - { in: path, name: historyId, required: true, schema: { type: integer } }
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Memperbarui riwayat jabatan
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RiwayatJabatanRequest' } } }
+      responses: { '200': { description: Histori diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { description: Tidak ditemukan } }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Menghapus riwayat jabatan
+      responses: { '204': { description: Histori dihapus }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Tidak ditemukan } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   schemas:
@@ -71,6 +133,25 @@ components:
         id_unit: { type: integer }
         id_jabatan: { type: integer }
         id_golongan: { type: integer }
+    PersonelRequest:
+      allOf:
+        - $ref: '#/components/schemas/PegawaiRequest'
+        - type: object
+          required: [id_satker]
+          properties:
+            id_satker: { type: integer, minimum: 1 }
+    RiwayatJabatanRequest:
+      type: object
+      required: [id_jabatan, id_satker, id_status_jabatan, tanggal_mulai]
+      properties:
+        id_jabatan: { type: integer, minimum: 1 }
+        id_satker: { type: integer, minimum: 1 }
+        id_fungsi: { type: integer, nullable: true }
+        id_level_jabatan: { type: integer, nullable: true }
+        id_status_jabatan: { type: integer, minimum: 1 }
+        tanggal_mulai: { type: string, format: date }
+        tanggal_selesai: { type: string, format: date, nullable: true }
+        keterangan: { type: string, maxLength: 2000, nullable: true }
   responses:
     BadRequest: { description: Request tidak valid }
     Unauthorized: { description: Token tidak valid atau tidak ada }
