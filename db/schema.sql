@@ -103,7 +103,9 @@ CREATE TABLE IF NOT EXISTS registration_requests (
     requested_role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (requested_role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker')),
     approved_role VARCHAR(20) CHECK (approved_role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker')),
     email_otp_hash CHAR(64),
-    otp_expires_at TIMESTAMPTZ NOT NULL,
+    otp_expires_at TIMESTAMPTZ,
+    otp_attempts INTEGER NOT NULL DEFAULT 0,
+    otp_last_sent_at TIMESTAMPTZ,
     email_verified_at TIMESTAMPTZ,
     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
     reviewed_by INTEGER REFERENCES users (id_user),
@@ -113,7 +115,7 @@ CREATE TABLE IF NOT EXISTS registration_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_registration_status ON registration_requests (status, created_at);
 
--- Kompatibilitas database lama: registrasi baru tidak lagi membutuhkan email/OTP.
+-- Kompatibilitas database lama: data registrasi lama boleh belum memiliki email/OTP.
 ALTER TABLE registration_requests ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE registration_requests ALTER COLUMN email_otp_hash DROP NOT NULL;
 ALTER TABLE registration_requests ALTER COLUMN otp_expires_at DROP NOT NULL;

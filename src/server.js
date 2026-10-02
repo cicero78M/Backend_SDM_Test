@@ -30,6 +30,7 @@ app.use((error, _req, res, _next) => {
   if (error.code === '23505') return res.status(409).json({ error: 'Data duplikat.' });
   // PostgreSQL code 23503 berarti foreign key tidak valid.
   if (error.code === '23503') return res.status(400).json({ error: 'Referensi data tidak valid.' });
+  if (error.statusCode) return res.status(error.statusCode).json({ error: error.publicMessage || 'Layanan email tidak tersedia.' });
   // Semua error lain dikembalikan sebagai internal server error generik.
   return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
 });

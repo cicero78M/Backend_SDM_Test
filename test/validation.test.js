@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { educationSchema, employeeSchema, jobHistorySchema, personnelSchema, trainingSchema, userScopeSchema, validate } from '../src/validation.js';
+import { educationSchema, employeeSchema, jobHistorySchema, personnelSchema, registerSchema, registerVerifyEmailSchema, trainingSchema, userScopeSchema, validate } from '../src/validation.js';
 
 const basePersonel = {
   nip: '12345678',
@@ -64,4 +64,14 @@ test('validasi pendidikan menerima jenjang dan tahun lulus', () => {
 test('validasi diklat menolak nilai di atas 100 dan tanggal terbalik', () => {
   const result = validate(trainingSchema, { nama_diklat: 'Diklat Demo', nilai: 101, tanggal_mulai: '2025-02-01', tanggal_selesai: '2025-01-01' });
   assert.deepEqual(result.error.map(item => item.field), ['nilai', 'tanggal_selesai']);
+});
+
+test('registrasi mewajibkan email valid', () => {
+  const result = validate(registerSchema, { username: 'budi', email: 'bukan-email', nama: 'Budi Santoso', pangkat: 'Briptu', nip: '12345678', satker_asal: 'Satker Demo', password: 'password-kuat' });
+  assert.equal(result.error[0].field, 'email');
+});
+
+test('OTP registrasi harus tepat enam digit', () => {
+  assert.equal(validate(registerVerifyEmailSchema, { registration_id: 1, otp: '123456' }).error, undefined);
+  assert.equal(validate(registerVerifyEmailSchema, { registration_id: 1, otp: '12345' }).error[0].field, 'otp');
 });

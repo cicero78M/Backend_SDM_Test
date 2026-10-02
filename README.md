@@ -52,7 +52,7 @@ Frontend tidak menyimpan secret. Keputusan permission tetap dilakukan backend wa
 | REST API & HTTP Method | Express, prefix `/api/v1`, GET/POST/PUT/DELETE |
 | Routing | Router modular pada `src/routes.js` |
 | CRUD & Database | CRUD `pegawai`, `personel`, `riwayat_jabatan`, pendidikan, dan diklat |
-| Authentication | JWT Bearer token, password bcrypt |
+| Authentication | JWT Bearer token, password bcrypt, OTP validasi email registrasi |
 | Authorization / Permission | Role `admin`, `admin_ssdm`, `operator_polda`, `operator_satker`, `editor`, `viewer` + scope organisasi |
 | Validation | Zod untuk format NIP/NIK/tanggal dan field wajib |
 | Error Handling | Status 400/401/403/404/409/500 dalam response JSON |
@@ -84,6 +84,18 @@ PORT=3000
 DATABASE_URL=postgresql://username:password@localhost:5432/backend_sdm
 JWT_SECRET=ganti-dengan-secret-acak-minimal-32-karakter
 JWT_EXPIRES_IN=1h
+NODE_ENV=development
+# Development lokal boleh memakai console; production wajib memakai smtp.
+EMAIL_DELIVERY=console
+EMAIL_FROM=no-reply@example.invalid
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASSWORD=
+OTP_TTL_MINUTES=10
+OTP_MAX_ATTEMPTS=5
+OTP_RESEND_COOLDOWN_SECONDS=60
 ```
 
 `JWT_SECRET` hanya digunakan server dan tidak boleh dimasukkan ke repository atau frontend.
@@ -97,6 +109,8 @@ psql "$DATABASE_URL" -f db/schema.sql
 # Untuk database staging yang sudah berisi schema dasar, jalankan migration additive:
 psql "$DATABASE_URL" -f db/migrations/002_merit_system_staging.sql
 psql "$DATABASE_URL" -f db/migrations/003_grant_app_role.sql
+# Untuk database yang sudah berjalan, terapkan migration OTP secara additive:
+psql "$DATABASE_URL" -f db/migrations/018_registration_email_otp.sql
 npm run dev
 ```
 
@@ -104,13 +118,15 @@ Health check: `GET http://localhost:3000/health`.
 
 ## Endpoint yang tersedia saat ini
 
-Semua endpoint selain register/login memerlukan header `Authorization: Bearer <token>`.
+Semua endpoint selain register/login/verify-email/resend-otp memerlukan header `Authorization: Bearer <token>`.
 
 ### Authentication
 
-- `POST /api/v1/auth/register` — registrasi user baru; role awal selalu `viewer`.
+- `POST /api/v1/auth/register` — registrasi user baru dengan email; role awal selalu `viewer` dan OTP dikirim ke email.
+- `POST /api/v1/auth/register/verify-email` — validasi OTP 6 digit sebelum registrasi masuk antrean approval.
+- `POST /api/v1/auth/register/resend-otp` — mengirim ulang OTP setelah cooldown.
 - `POST /api/v1/auth/login` — login dan memperoleh JWT.
-- `GET /api/v1/auth/registrations/pending` — daftar registrasi yang menunggu approval; hanya role `admin` pertama.
+- `GET /api/v1/auth/registrations/pending` — daftar registrasi yang sudah memvalidasi email dan menunggu approval; hanya role `admin` pertama.
 - `PATCH /api/v1/auth/registrations/:id` — menyetujui atau menolak registrasi serta menetapkan role; hanya role `admin` pertama.
 - `GET /api/v1/auth/registrations/history` — riwayat keputusan approval; hanya role `admin` pertama.
 - `GET /api/v1/auth/users/approved` — daftar user aktif untuk administrasi; admin/admin SSDM.
@@ -227,6 +243,16 @@ Runner memverifikasi health check, login Admin SSDM/Operator Polda/Operator Satk
 | Viewer | `viewer` | Sesuai kebijakan aplikasi | Baca terbatas |
 
 Catatan: approval pendaftaran tetap sengaja dibatasi role `admin` pertama. Admin SSDM dapat mengelola user aktif, role, password, dan scope setelah akun tersedia, tetapi tidak dapat memproses registrasi pending.
+
+### Alur validasi email registrasi
+
+1. User mengirim username, email, identitas pendaftaran, dan password ke endpoint register.
+2. Backend menyimpan hanya hash OTP dan hash password; OTP berlaku sesuai `OTP_TTL_MINUTES`.
+3. User mengirim `registration_id` dan OTP ke endpoint verify-email.
+4. Maksimum percobaan salah diatur `OTP_MAX_ATTEMPTS`; OTP baru memiliki cooldown `OTP_RESEND_COOLDOWN_SECONDS`.
+5. Hanya registrasi dengan `email_verified_at` yang tampil pada antrean approval admin.
+
+`EMAIL_DELIVERY=console` hanya untuk development lokal dan menulis OTP ke log server. Production harus memakai `EMAIL_DELIVERY=smtp` serta `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, dan `EMAIL_FROM`; OTP tidak pernah dikembalikan pada response API.
 
 ## Repository terkait
 

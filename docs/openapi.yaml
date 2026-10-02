@@ -12,7 +12,21 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } }
-      responses: { '201': { description: User berhasil dibuat }, '400': { $ref: '#/components/responses/BadRequest' } }
+      responses: { '201': { description: OTP validasi email dikirim }, '400': { $ref: '#/components/responses/BadRequest' }, '503': { description: Email OTP gagal dikirim } }
+  /auth/register/verify-email:
+    post:
+      summary: Memvalidasi OTP email registrasi
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RegisterVerifyEmailRequest' } } }
+      responses: { '200': { description: Email tervalidasi }, '400': { $ref: '#/components/responses/BadRequest' }, '429': { description: Batas percobaan tercapai } }
+  /auth/register/resend-otp:
+    post:
+      summary: Mengirim ulang OTP registrasi
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RegisterResendOtpRequest' } } }
+      responses: { '200': { description: OTP baru dikirim }, '404': { description: Registrasi tidak ditemukan }, '429': { description: Cooldown OTP belum selesai } }
   /auth/login:
     post:
       summary: Login dan mendapatkan JWT
@@ -357,7 +371,9 @@ paths:
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   schemas:
-    RegisterRequest: { type: object, required: [username, password], properties: { username: { type: string, minLength: 3 }, password: { type: string, minLength: 8 } } }
+    RegisterRequest: { type: object, required: [username, email, nama, pangkat, nip, satker_asal, password], properties: { username: { type: string, minLength: 3 }, email: { type: string, format: email }, nama: { type: string }, pangkat: { type: string }, nip: { type: string }, satker_asal: { type: string }, password: { type: string, minLength: 8 } } }
+    RegisterVerifyEmailRequest: { type: object, required: [registration_id, otp], properties: { registration_id: { type: integer, minimum: 1 }, otp: { type: string, pattern: '^\d{6}$' } } }
+    RegisterResendOtpRequest: { type: object, required: [registration_id], properties: { registration_id: { type: integer, minimum: 1 } } }
     LoginRequest: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string } } }
     PegawaiRequest:
       type: object

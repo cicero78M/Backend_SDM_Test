@@ -5,11 +5,19 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal harus YYYY-
 // Schema registrasi; role sengaja tidak menerima input publik agar tidak terjadi privilege escalation.
 export const registerSchema = z.object({
   username: z.string().trim().min(3).max(50),
+  email: z.string().trim().email().max(150),
   nama: z.string().trim().min(2).max(100),
   pangkat: z.string().trim().min(1).max(80),
   nip: z.string().trim().min(1).max(30),
   satker_asal: z.string().trim().min(2).max(150),
   password: z.string().min(8).max(100)
+});
+export const registerVerifyEmailSchema = z.object({
+  registration_id: z.coerce.number().int().positive(),
+  otp: z.string().trim().regex(/^\d{6}$/, 'OTP harus 6 digit.'),
+});
+export const registerResendOtpSchema = z.object({
+  registration_id: z.coerce.number().int().positive(),
 });
 export const approvalSchema = z.object({ decision: z.enum(['approve', 'reject']), approved_role: z.enum(['viewer', 'editor', 'admin', 'admin_ssdm', 'operator_polda', 'operator_satker']).default('viewer'), note: z.string().trim().max(500).optional().nullable() });
 export const roleUpdateSchema = z.object({ role: z.enum(['viewer', 'editor', 'admin', 'admin_ssdm', 'operator_polda', 'operator_satker']) });

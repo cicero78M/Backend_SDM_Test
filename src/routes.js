@@ -6,26 +6,84 @@ import { comparePassword, hashPassword, hashResetToken, signToken, authenticate,
 // Mengimpor helper query PostgreSQL.
 import { query, withTransaction } from './db.js';
 import { assertFunctionBelongsToSatker, assertPersonnelAccess, assertSatkerAccess, assertUnitBelongsToSatker, canManagePersonnel, isAdministrator, writeAudit } from './access.js';
+import { sendRegistrationOtp } from './email.js';
+import { generateOtp, hashOtp, OTP_MAX_ATTEMPTS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_MINUTES } from './otp.js';
 // Mengimpor schema validasi request.
-import { adminResetPasswordSchema, approvalSchema, changePasswordSchema, educationSchema, employeeSchema, forgotPasswordSchema, jobHistorySchema, loginSchema, meritAssessmentSchema, personnelSchema, registerSchema, resetPasswordSchema, roleUpdateSchema, trainingSchema, userScopeSchema, userStatusSchema, validate } from './validation.js';
+import { adminResetPasswordSchema, approvalSchema, changePasswordSchema, educationSchema, employeeSchema, forgotPasswordSchema, jobHistorySchema, loginSchema, meritAssessmentSchema, personnelSchema, registerResendOtpSchema, registerSchema, registerVerifyEmailSchema, resetPasswordSchema, roleUpdateSchema, trainingSchema, userScopeSchema, userStatusSchema, validate } from './validation.js';
 // Membuat router yang akan dipasang di prefix /api/v1.
 export const router = Router();
 // Query dasar pegawai sekaligus mengambil nama dari tabel referensi.
 const employeeSelect = `SELECT p.*, u.nama_unit, j.nama_jabatan, g.kode_golongan, COALESCE(p.pangkat, g.nama_pangkat) AS nama_pangkat FROM pegawai p JOIN unit_kerja u ON u.id_unit=p.id_unit JOIN jabatan j ON j.id_jabatan=p.id_jabatan LEFT JOIN golongan g ON g.id_golongan=p.id_golongan`;
-// Endpoint registrasi membuat permintaan pending; user belum dapat login sebelum approval admin.
+// Endpoint registrasi membuat permintaan pending dan mengirim OTP validasi email.
 router.post('/auth/register', async (req, res, next) => {
   try {
     const parsed = validate(registerSchema, req.body);
     if (parsed.error) return res.status(400).json({ error: 'Validasi gagal.', details: parsed.error });
-    const { username, nama, pangkat, nip, satker_asal, password } = parsed.data;
-    const result = await query(`INSERT INTO registration_requests (username,nama,pangkat,nip,satker_asal,password_hash,requested_role)
-      VALUES ($1,$2,$3,$4,$5,$6,'viewer') RETURNING id_registration, username, nama, pangkat, nip, satker_asal, requested_role, status`, [username, nama, pangkat, nip, satker_asal, await hashPassword(password)]);
-    return res.status(201).json({ ...result.rows[0], message: 'Pendaftaran menunggu approval admin.' });
+    const { username, email, nama, pangkat, nip, satker_asal, password } = parsed.data;
+    const otp = generateOtp();
+    const result = await query(`INSERT INTO registration_requests (username,email,nama,pangkat,nip,satker_asal,password_hash,requested_role,email_otp_hash,otp_expires_at,otp_last_sent_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'viewer',$8,NOW()+($9 * INTERVAL '1 minute'),NOW())
+      RETURNING id_registration, username, email, nama, pangkat, nip, satker_asal, requested_role, status, otp_expires_at`, [username, email, nama, pangkat, nip, satker_asal, await hashPassword(password), hashOtp(otp), OTP_TTL_MINUTES]);
+    try {
+      await sendRegistrationOtp({ email, otp, expiresMinutes: OTP_TTL_MINUTES });
+    } catch (mailError) {
+      mailError.statusCode = 503;
+      mailError.publicMessage = 'Pendaftaran tersimpan, tetapi email OTP belum dapat dikirim. Silakan coba kirim ulang OTP.';
+      throw mailError;
+    }
+    return res.status(201).json({ ...result.rows[0], message: 'OTP validasi email telah dikirim.' });
+  } catch (error) { return next(error); }
+});
+// Memvalidasi OTP email sebelum pendaftaran dapat diproses admin.
+router.post('/auth/register/verify-email', async (req, res, next) => {
+  try {
+    const parsed = validate(registerVerifyEmailSchema, req.body);
+    if (parsed.error) return res.status(400).json({ error: 'Validasi OTP gagal.', details: parsed.error });
+    const pending = await query(`SELECT id_registration, email_verified_at, email_otp_hash, otp_expires_at, otp_attempts
+      FROM registration_requests WHERE id_registration=$1 AND status='pending'`, [parsed.data.registration_id]);
+    const item = pending.rows[0];
+    if (!item) return res.status(400).json({ error: 'Permintaan registrasi tidak valid atau sudah diproses.' });
+    if (item.email_verified_at) return res.status(409).json({ error: 'Email sudah tervalidasi.' });
+    if (item.otp_attempts >= OTP_MAX_ATTEMPTS) return res.status(429).json({ error: 'Batas percobaan OTP tercapai. Silakan kirim ulang OTP.' });
+    if (!item.otp_expires_at || new Date(item.otp_expires_at) <= new Date()) return res.status(400).json({ error: 'OTP sudah kedaluwarsa. Silakan kirim ulang OTP.' });
+    if (hashOtp(parsed.data.otp) !== item.email_otp_hash) {
+      await query('UPDATE registration_requests SET otp_attempts=otp_attempts+1 WHERE id_registration=$1', [parsed.data.registration_id]);
+      return res.status(400).json({ error: 'OTP tidak valid.' });
+    }
+    await query(`UPDATE registration_requests SET email_verified_at=NOW(), email_otp_hash=NULL, otp_attempts=0
+      WHERE id_registration=$1 AND status='pending'`, [parsed.data.registration_id]);
+    return res.json({ message: 'Email berhasil divalidasi. Pendaftaran menunggu approval admin.' });
+  } catch (error) { return next(error); }
+});
+// Mengirim ulang OTP dengan cooldown untuk mencegah abuse email.
+router.post('/auth/register/resend-otp', async (req, res, next) => {
+  try {
+    const parsed = validate(registerResendOtpSchema, req.body);
+    if (parsed.error) return res.status(400).json({ error: 'Permintaan OTP tidak valid.', details: parsed.error });
+    const pending = await query(`SELECT id_registration, email, email_verified_at, otp_last_sent_at
+      FROM registration_requests WHERE id_registration=$1 AND status='pending'`, [parsed.data.registration_id]);
+    const item = pending.rows[0];
+    if (!item) return res.status(404).json({ error: 'Permintaan registrasi tidak ditemukan.' });
+    if (item.email_verified_at) return res.status(409).json({ error: 'Email sudah tervalidasi.' });
+    if (item.otp_last_sent_at && (Date.now() - new Date(item.otp_last_sent_at).getTime()) < OTP_RESEND_COOLDOWN_SECONDS * 1000) {
+      return res.status(429).json({ error: `Tunggu ${OTP_RESEND_COOLDOWN_SECONDS} detik sebelum meminta OTP lagi.` });
+    }
+    const otp = generateOtp();
+    await query(`UPDATE registration_requests SET email_otp_hash=$1, otp_expires_at=NOW()+($2 * INTERVAL '1 minute'), otp_attempts=0, otp_last_sent_at=NOW()
+      WHERE id_registration=$3 AND status='pending'`, [hashOtp(otp), OTP_TTL_MINUTES, parsed.data.registration_id]);
+    try {
+      await sendRegistrationOtp({ email: item.email, otp, expiresMinutes: OTP_TTL_MINUTES });
+    } catch (mailError) {
+      mailError.statusCode = 503;
+      mailError.publicMessage = 'OTP baru belum dapat dikirim. Silakan coba lagi nanti.';
+      throw mailError;
+    }
+    return res.json({ message: 'OTP baru telah dikirim.' });
   } catch (error) { return next(error); }
 });
 // Admin pertama melihat semua pendaftaran yang menunggu keputusan.
 router.get('/auth/registrations/pending', authenticate, authorize('admin'), async (req, res, next) => {
-  try { const page = Math.max(Number(req.query.page) || 1, 1); const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50); const offset = (page - 1) * limit; const total = await query("SELECT COUNT(*)::int AS total FROM registration_requests WHERE status='pending'"); const result = await query(`SELECT id_registration, username, nama, pangkat, nip, satker_asal, requested_role, created_at FROM registration_requests WHERE status='pending' ORDER BY CASE requested_role WHEN 'admin' THEN 1 WHEN 'admin_ssdm' THEN 2 WHEN 'operator_polda' THEN 3 WHEN 'operator_satker' THEN 4 WHEN 'editor' THEN 5 ELSE 6 END, username ASC LIMIT $1 OFFSET $2`, [limit, offset]); return res.json({ data: result.rows, meta: { page, limit, total: total.rows[0].total } }); } catch (error) { return next(error); }
+  try { const page = Math.max(Number(req.query.page) || 1, 1); const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50); const offset = (page - 1) * limit; const total = await query("SELECT COUNT(*)::int AS total FROM registration_requests WHERE status='pending' AND email_verified_at IS NOT NULL"); const result = await query(`SELECT id_registration, username, email, email_verified_at, nama, pangkat, nip, satker_asal, requested_role, created_at FROM registration_requests WHERE status='pending' AND email_verified_at IS NOT NULL ORDER BY CASE requested_role WHEN 'admin' THEN 1 WHEN 'admin_ssdm' THEN 2 WHEN 'operator_polda' THEN 3 WHEN 'operator_satker' THEN 4 WHEN 'editor' THEN 5 ELSE 6 END, username ASC LIMIT $1 OFFSET $2`, [limit, offset]); return res.json({ data: result.rows, meta: { page, limit, total: total.rows[0].total } }); } catch (error) { return next(error); }
 });
 // Riwayat seluruh keputusan approval beserta aktor yang mengambil keputusan.
 router.get('/auth/registrations/history', authenticate, authorize('admin'), async (req, res, next) => {
@@ -85,8 +143,9 @@ router.patch('/auth/registrations/:id', authenticate, authorize('admin'), async 
     const pending = await query(`SELECT * FROM registration_requests WHERE id_registration=$1 AND status='pending'`, [req.params.id]);
     if (!pending.rows[0]) return res.status(404).json({ error: 'Permintaan pendaftaran tidak ditemukan.' });
     const item = pending.rows[0];
+    if (!item.email_verified_at) return res.status(409).json({ error: 'Email pendaftar belum tervalidasi.' });
     if (parsed.data.decision === 'approve') {
-      const created = await query(`INSERT INTO users (username,password_hash,role) VALUES ($1,$2,$3) RETURNING id_user, username, role, is_active`, [item.username, item.password_hash, parsed.data.approved_role]);
+      const created = await query(`INSERT INTO users (username,email,email_verified,password_hash,role) VALUES ($1,$2,TRUE,$3,$4) RETURNING id_user, username, email, role, is_active`, [item.username, item.email, item.password_hash, parsed.data.approved_role]);
       await query(`UPDATE registration_requests SET status='approved', approved_role=$1, reviewed_by=$2, reviewed_at=NOW(), review_note=$3 WHERE id_registration=$4`, [parsed.data.approved_role, req.user.id_user, parsed.data.note || null, req.params.id]);
       return res.json({ message: 'Pendaftaran disetujui.', user: created.rows[0] });
     }
