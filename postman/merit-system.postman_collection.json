@@ -7,11 +7,15 @@
   "variable": [
     { "key": "base_url", "value": "http://localhost:3000/api/v1" },
     { "key": "server_url", "value": "http://localhost:3000" },
-    { "key": "username", "value": "demo_admin_ssdm" },
-    { "key": "password", "value": "Demo-Admin-2026!" },
+    { "key": "username", "value": "" },
+    { "key": "password", "value": "" },
     { "key": "token", "value": "" },
     { "key": "user_id", "value": "" },
-    { "key": "personel_id", "value": "" }
+    { "key": "personel_id", "value": "" },
+    { "key": "satker_id", "value": "1" },
+    { "key": "unit_id", "value": "1" },
+    { "key": "jabatan_id", "value": "1" },
+    { "key": "history_id", "value": "" }
   ],
   "item": [
     {
@@ -28,12 +32,42 @@
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel?page=1&limit=10" }
     },
     {
+      "name": "Create personel",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Personel dibuat', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.collectionVariables.set('personel_id', body.data?.id_pegawai || body.data?.id_personel || '');"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"nip\": \"991234567890123456\",\n  \"jenis_personel\": \"ASN\",\n  \"jenis_identitas\": \"NIP\",\n  \"nik\": \"3273010101010001\",\n  \"nama\": \"Demo Personel CRUD\",\n  \"jenis_kelamin\": \"L\",\n  \"tanggal_lahir\": \"1990-01-01\",\n  \"tanggal_masuk\": \"2015-01-01\",\n  \"id_satker\": {{satker_id}},\n  \"id_unit\": {{unit_id}},\n  \"id_jabatan\": {{jabatan_id}},\n  \"pangkat\": \"Penata\"\n}" }, "url": "{{base_url}}/personel" }
+    },
+    {
+      "name": "Read personel",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}" }
+    },
+    {
+      "name": "Update personel",
+      "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"nip\": \"991234567890123456\",\n  \"jenis_personel\": \"ASN\",\n  \"jenis_identitas\": \"NIP\",\n  \"nik\": \"3273010101010001\",\n  \"nama\": \"Demo Personel CRUD Updated\",\n  \"jenis_kelamin\": \"L\",\n  \"tanggal_lahir\": \"1990-01-01\",\n  \"tanggal_masuk\": \"2015-01-01\",\n  \"id_satker\": {{satker_id}},\n  \"id_unit\": {{unit_id}},\n  \"id_jabatan\": {{jabatan_id}},\n  \"pangkat\": \"Pembina\"\n}" }, "url": "{{base_url}}/personel/{{personel_id}}" }
+    },
+    {
       "name": "Profil personel",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}/profile" }
     },
     {
       "name": "Scope user",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/auth/users/{{user_id}}/scopes" }
+    },
+    {
+      "name": "Create riwayat jabatan",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Riwayat dibuat', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.collectionVariables.set('history_id', body.data?.id_riwayat_jabatan || body.data?.id_history || '');"] } }],
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"id_jabatan\": {{jabatan_id}},\n  \"id_satker\": {{satker_id}},\n  \"id_status_jabatan\": 1,\n  \"tanggal_mulai\": \"2020-01-01\",\n  \"keterangan\": \"Smoke test CRUD\"\n}" }, "url": "{{base_url}}/personel/{{personel_id}}/riwayat-jabatan" }
+    },
+    {
+      "name": "Read riwayat jabatan",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}/riwayat-jabatan" }
+    },
+    {
+      "name": "Delete riwayat jabatan",
+      "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}/riwayat-jabatan/{{history_id}}" }
+    },
+    {
+      "name": "Delete personel",
+      "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}" }
     }
   ]
 }

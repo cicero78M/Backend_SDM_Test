@@ -99,6 +99,82 @@ paths:
         required: true
         content: { application/json: { schema: { type: object, required: [id_satker], properties: { id_satker: { type: array, items: { type: integer, minimum: 1 }, maxItems: 100 } } } } }
       responses: { '200': { description: Scope diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/registrations/pending:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Daftar registrasi yang menunggu approval admin
+      responses: { '200': { description: Daftar registrasi }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/registrations/history:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Riwayat keputusan registrasi
+      responses: { '200': { description: Riwayat registrasi }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/registrations/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Menyetujui atau menolak registrasi
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [approve, reject] }, approved_role: { type: string }, note: { type: string, nullable: true } } } } }
+      responses: { '200': { description: Registrasi diproses }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/users/approved:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Daftar user aktif
+      responses: { '200': { description: Daftar user }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/users/{id}/role:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Mengubah role user
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [role], properties: { role: { type: string } } } } }
+      responses: { '200': { description: Role diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/users/{id}/status:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Mengubah status aktif user
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [is_active], properties: { is_active: { type: boolean }, reason: { type: string, nullable: true } } } } }
+      responses: { '200': { description: Status user diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /auth/me:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca user yang sedang login
+      responses: { '200': { description: Profil sesi }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /auth/me/password:
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Mengubah password sendiri
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [current_password, new_password], properties: { current_password: { type: string }, new_password: { type: string, minLength: 8 } } } } }
+      responses: { '204': { description: Password diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /auth/forgot-password:
+    post:
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [username], properties: { username: { type: string } } } } }
+      responses: { '200': { description: Permintaan reset diproses } }
+  /auth/reset-password:
+    post:
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [token, new_password], properties: { token: { type: string }, new_password: { type: string, minLength: 8 } } } } }
+      responses: { '204': { description: Password direset }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /auth/users/{id}/password:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Reset password oleh admin
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [new_password], properties: { new_password: { type: string, minLength: 8 } } } } }
+      responses: { '204': { description: Password diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
   /personel/{id}/profile:
     get:
       security: [{ bearerAuth: [] }]
@@ -132,6 +208,152 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Menghapus riwayat jabatan
       responses: { '204': { description: Histori dihapus }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Tidak ditemukan } }
+  /personel/{id}/pendidikan:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Daftar riwayat pendidikan personel
+      responses: { '200': { description: Daftar pendidikan }, '403': { $ref: '#/components/responses/Forbidden' } }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Menambahkan riwayat pendidikan
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EducationRequest' } } }
+      responses: { '201': { description: Pendidikan dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /personel/{id}/pendidikan/{educationId}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+      - { in: path, name: educationId, required: true, schema: { type: integer } }
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Memperbarui riwayat pendidikan
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EducationRequest' } } }
+      responses: { '200': { description: Pendidikan diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { description: Tidak ditemukan } }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Menghapus riwayat pendidikan
+      responses: { '204': { description: Pendidikan dihapus }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Tidak ditemukan } }
+  /personel/{id}/diklat:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Daftar riwayat diklat personel
+      responses: { '200': { description: Daftar diklat }, '403': { $ref: '#/components/responses/Forbidden' } }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Menambahkan riwayat diklat
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TrainingRequest' } } }
+      responses: { '201': { description: Diklat dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /personel/{id}/diklat/{trainingId}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+      - { in: path, name: trainingId, required: true, schema: { type: integer } }
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Memperbarui riwayat diklat
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TrainingRequest' } } }
+      responses: { '200': { description: Diklat diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { description: Tidak ditemukan } }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Menghapus riwayat diklat
+      responses: { '204': { description: Diklat dihapus }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Tidak ditemukan } }
+  /dashboard/overview:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Agregasi dashboard sesuai scope user
+      responses: { '200': { description: Ringkasan analitik }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/satker:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca master Satker
+      responses: { '200': { description: Daftar Satker }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/satker/tree:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca hierarki Satker
+      responses: { '200': { description: Hierarki Satker }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/satker/{id}/fungsi:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca fungsi pada Satker
+      responses: { '200': { description: Daftar fungsi }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/satker/{id}/unit-kerja:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca unit kerja pada Satker
+      responses: { '200': { description: Daftar unit kerja }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/fungsi:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca master fungsi
+      responses: { '200': { description: Daftar fungsi }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/level-jabatan:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca master level jabatan
+      responses: { '200': { description: Daftar level jabatan }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/status-jabatan:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca master status jabatan
+      responses: { '200': { description: Daftar status jabatan }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/unit-kerja:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca master unit kerja
+      responses: { '200': { description: Daftar unit kerja }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/jabatan:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca master jabatan
+      responses: { '200': { description: Daftar jabatan }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /master/golongan:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca master golongan
+      responses: { '200': { description: Daftar master data }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /merit/indicators:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca indikator merit aktif
+      responses: { '200': { description: Daftar indikator }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /merit/periods:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca periode merit
+      responses: { '200': { description: Daftar periode }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /personel/{id}/merit:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Membaca penilaian merit personel
+      responses: { '200': { description: Data merit }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /personel/{id}/merit-assessments:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Menambahkan penilaian merit
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [id_period, id_indicator, nilai_raw], properties: { id_period: { type: integer }, id_indicator: { type: integer }, nilai_raw: { type: number, minimum: 0, maximum: 100 }, bukti: { type: string, nullable: true }, status: { type: string } } } } }
+      responses: { '201': { description: Penilaian dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /personel/{id}/merit-assessments/{assessmentId}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+      - { in: path, name: assessmentId, required: true, schema: { type: integer } }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Menghapus penilaian merit
+      responses: { '204': { description: Penilaian dihapus }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Tidak ditemukan } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   schemas:
@@ -172,6 +394,29 @@ components:
         tanggal_mulai: { type: string, format: date }
         tanggal_selesai: { type: string, format: date, nullable: true }
         keterangan: { type: string, maxLength: 2000, nullable: true }
+    EducationRequest:
+      type: object
+      required: [jenjang, institusi]
+      properties:
+        jenjang: { type: string, enum: [SD, SMP, SMA, D1, D2, D3, D4, S1, S2, S3] }
+        institusi: { type: string, minLength: 2, maxLength: 150 }
+        jurusan: { type: string, maxLength: 150, nullable: true }
+        tahun_lulus: { type: integer, minimum: 1900, nullable: true }
+        nomor_ijazah: { type: string, maxLength: 100, nullable: true }
+        keterangan: { type: string, maxLength: 1000, nullable: true }
+    TrainingRequest:
+      type: object
+      required: [nama_diklat]
+      properties:
+        nama_diklat: { type: string, minLength: 2, maxLength: 200 }
+        jenis_diklat: { type: string, maxLength: 100, nullable: true }
+        penyelenggara: { type: string, maxLength: 150, nullable: true }
+        tanggal_mulai: { type: string, format: date, nullable: true }
+        tanggal_selesai: { type: string, format: date, nullable: true }
+        jam_pelajaran: { type: integer, minimum: 0, nullable: true }
+        nilai: { type: number, minimum: 0, maximum: 100, nullable: true }
+        nomor_sertifikat: { type: string, maxLength: 100, nullable: true }
+        keterangan: { type: string, maxLength: 1000, nullable: true }
   responses:
     BadRequest: { description: Request tidak valid }
     Unauthorized: { description: Token tidak valid atau tidak ada }

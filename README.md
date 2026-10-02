@@ -26,7 +26,7 @@ Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi re
 | Administrasi | Selesai untuk prototype | User/role, approval registrasi admin pertama, scope, audit perubahan, dan UI Administrasi Akses |
 | Integrasi frontend | Selesai untuk prototype | Login, visualisasi, personel, profil, histori, kualifikasi, form input/edit, dan UI scope |
 | Dashboard analitik | Selesai untuk prototype | Agregasi status, golongan/pangkat POLRI dan ASN, pendidikan, diklat berulang, mutasi berulang, kualitas data, usia, lama dinas, dan proyeksi pensiun berbasis scope |
-| Pengujian | Lulus | 10 test unit/authorization/validasi lulus; E2E demo tiga persona tersedia |
+| Pengujian | Lulus | 10 test unit/authorization/validasi lulus; runner E2E demo tiga persona tersedia |
 
 Rincian target dan kriteria penerimaan tersedia di [`docs/RENCANA_PENGEMBANGAN.md`](docs/RENCANA_PENGEMBANGAN.md).
 
@@ -170,7 +170,7 @@ psql "$DATABASE_URL" -X -c "SELECT table_name FROM information_schema.tables WHE
 
 ## Dokumentasi API dan pengujian
 
-Dokumentasi request/response tersedia di [`docs/openapi.yaml`](docs/openapi.yaml) dan dapat diimpor ke Swagger Editor atau Postman.
+Dokumentasi request/response tersedia di [`docs/openapi.yaml`](docs/openapi.yaml) dan dapat diimpor ke Swagger Editor. Alur smoke test dan CRUD utama tersedia di [`postman/merit-system.postman_collection.json`](postman/merit-system.postman_collection.json). Isi username/password dan ID master pada environment Postman lokal; collection tidak menyimpan kredensial demo.
 
 Contoh request:
 
@@ -193,8 +193,9 @@ npm test
 
 Suite saat ini mencakup validasi POLRI/NRP, ASN/NIP, chronology tanggal,
 validasi scope, permission role, pendidikan, dan diklat; hasil terakhir
-**10/10 lulus**. Postman collection tersedia di
-`postman/merit-system.postman_collection.json`.
+**10/10 lulus**. Jalankan `npm test` sebelum pengumpulan. Untuk uji alur
+CRUD berbasis database demo, gunakan Postman collection atau runner E2E;
+keduanya memerlukan database demo dan kredensial lokal.
 
 ### Smoke test E2E database demo
 
