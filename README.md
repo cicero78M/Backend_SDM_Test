@@ -22,7 +22,7 @@ Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi re
 |---|---|---|
 | Fondasi API | Selesai | Express, PostgreSQL, CRUD pegawai, JWT, bcrypt, Zod, OpenAPI |
 | Domain karier | Selesai | `riwayat_jabatan`, fungsi, status/nivelering jabatan, profil kronologis |
-| Scope organisasi | Selesai | Satker/Polda, relasi user-scope, pembatasan data operator, transaksi scope |
+| Scope organisasi | Selesai | Satker/Polda, relasi user-scope, pembatasan data operator, transaksi scope, dan operator Polres |
 | Administrasi | Selesai untuk prototype | User/role, approval registrasi admin pertama, scope, audit perubahan, dan UI Administrasi Akses |
 | Integrasi frontend | Selesai untuk prototype | Login, visualisasi, personel, profil, histori, kualifikasi, form input/edit, dan UI scope |
 | Dashboard analitik | Selesai untuk prototype | Agregasi status, golongan/pangkat POLRI dan ASN, pendidikan, diklat berulang, mutasi berulang, kualitas data, usia, lama dinas, dan proyeksi pensiun berbasis scope |
@@ -53,7 +53,7 @@ Frontend tidak menyimpan secret. Keputusan permission tetap dilakukan backend wa
 | Routing | Router modular pada `src/routes.js` |
 | CRUD & Database | CRUD `pegawai`, `personel`, `riwayat_jabatan`, pendidikan, dan diklat |
 | Authentication | JWT Bearer token, password bcrypt, OTP validasi email registrasi |
-| Authorization / Permission | Role `admin`, `admin_ssdm`, `operator_polda`, `operator_satker`, `editor`, `viewer` + scope organisasi |
+| Authorization / Permission | Role `admin`, `admin_ssdm`, `operator_polda`, `operator_satker`, `operator_polres`, `editor`, `viewer` + scope organisasi |
 | Validation | Zod untuk format NIP/NIK/tanggal dan field wajib |
 | Error Handling | Status 400/401/403/404/409/500 dalam response JSON |
 | Version Control | Git dan repository GitHub |
@@ -88,6 +88,7 @@ NODE_ENV=development
 # Development lokal boleh memakai console; production wajib memakai smtp.
 EMAIL_DELIVERY=console
 EMAIL_FROM=no-reply@example.invalid
+PASSWORD_RESET_URL=http://localhost:4173/?reset_token=
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -111,6 +112,8 @@ psql "$DATABASE_URL" -f db/migrations/002_merit_system_staging.sql
 psql "$DATABASE_URL" -f db/migrations/003_grant_app_role.sql
 # Untuk database yang sudah berjalan, terapkan migration OTP secara additive:
 psql "$DATABASE_URL" -f db/migrations/018_registration_email_otp.sql
+psql "$DATABASE_URL" -f db/migrations/019_registration_satker_scope.sql
+psql "$DATABASE_URL" -f db/migrations/020_registration_identity.sql
 npm run dev
 ```
 
@@ -126,6 +129,8 @@ Semua endpoint selain register/login/verify-email/resend-otp memerlukan header `
 - `POST /api/v1/auth/register/verify-email` — validasi OTP 6 digit sebelum registrasi masuk antrean approval.
 - `POST /api/v1/auth/register/resend-otp` — mengirim ulang OTP setelah cooldown.
 - `POST /api/v1/auth/login` — login dan memperoleh JWT.
+- `POST /api/v1/auth/forgot-password` — meminta reset password menggunakan username atau email; instruksi dikirim ke email terdaftar.
+- `POST /api/v1/auth/reset-password` — menetapkan password baru memakai token satu kali dari email reset.
 - `GET /api/v1/auth/registrations/pending` — daftar registrasi yang sudah memvalidasi email dan menunggu approval; hanya role `admin` pertama.
 - `PATCH /api/v1/auth/registrations/:id` — menyetujui atau menolak registrasi serta menetapkan role; hanya role `admin` pertama.
 - `GET /api/v1/auth/registrations/history` — riwayat keputusan approval; hanya role `admin` pertama.
@@ -153,6 +158,20 @@ Endpoint berikut tersedia setelah migration schema Merit System diterapkan:
 - `GET /api/v1/auth/users/:id/scopes` — melihat scope Satker user oleh admin.
 - `PUT /api/v1/auth/users/:id/scopes` — mengganti scope Satker user secara transaksional oleh admin.
 - `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, golongan/pangkat terpisah untuk POLRI dan ASN, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kualitas data, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user. Ringkasan diklat dan mutasi mencakup personel yang pernah, belum pernah, serta memiliki lebih dari satu riwayat. Kualitas data mencakup kelengkapan field personel dan status validasi staging.
+
+Endpoint master yang dipakai form personel dan riwayat jabatan:
+
+- `GET /api/v1/master/satker/:id/unit-kerja` — struktur unit kerja untuk Update Data.
+- `GET /api/v1/master/satker/:id/unsur-pembantu-pimpinan` — struktur parent-child
+  aktif untuk rumpun `BAG*`, `SAT*`, `SI*`, dan `POLSEK`, termasuk parent sampai
+  unit terkecil yang relevan.
+- `GET /api/v1/master/jabatan?satker_id=<id>&unit_id=<id>` — jabatan aktif yang
+  dipetakan ke unit terpilih; mapping `legacy-assignment` tidak dikembalikan.
+
+Riwayat jabatan menyimpan `id_unit` dan memvalidasi Satker, rantai parent,
+mapping jabatan-unit, status, serta rentang tanggal di backend. Role
+`operator_polres` wajib menggunakan Satker personel saat menambah atau mengubah
+riwayat; backend menolak Satker lain walaupun payload dikirim langsung ke API.
 
 Riwayat jabatan mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal berakhir, nivelering, status, dan keterangan. Validasi mencegah format payload yang salah; constraint database mencegah tanggal terbalik dan lebih dari satu histori aktif untuk personel yang sama.
 
@@ -240,6 +259,7 @@ Runner memverifikasi health check, login Admin SSDM/Operator Polda/Operator Satk
 | Admin SSDM | `admin_ssdm` | Seluruh Satker | Kelola personel, histori, dan administrasi domain |
 | Operator Polda | `operator_polda` | Satker yang ditetapkan admin | CRUD data dalam scope |
 | Operator Satker | `operator_satker` | Satker yang ditetapkan admin | CRUD data dalam scope |
+| Operator Polres | `operator_polres` | Satker personel | CRUD data dalam scope; riwayat hanya pada Satker personel dan Unsur Pembantu Pimpinan yang sesuai |
 | Viewer | `viewer` | Sesuai kebijakan aplikasi | Baca terbatas |
 
 Catatan: approval pendaftaran tetap sengaja dibatasi role `admin` pertama. Admin SSDM dapat mengelola user aktif, role, password, dan scope setelah akun tersedia, tetapi tidak dapat memproses registrasi pending.

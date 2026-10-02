@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS pegawai (
     id_golongan INTEGER REFERENCES golongan (id_golongan),
     -- Nomenklatur pangkat Polri atau kualifikasi lain yang tidak berada di tabel golongan ASN.
     pangkat VARCHAR(80),
+    -- Nama manual Polsek jika unit kerja yang dipilih adalah Kepolisian Sektor.
+    nama_polsek VARCHAR(100),
     -- Self-reference ke pegawai yang menjadi atasan.
     id_atasan INTEGER REFERENCES pegawai (id_pegawai),
     -- Status kepegawaian dengan default aktif.
@@ -83,7 +85,7 @@ CREATE TABLE IF NOT EXISTS users (
     -- Role menentukan permission endpoint.
     email VARCHAR(150) UNIQUE,
     email_verified BOOLEAN NOT NULL DEFAULT TRUE,
-    role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker')),
+    role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker', 'operator_polres')),
     -- Admin dapat menonaktifkan user tanpa menghapus histori.
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     -- Waktu user dibuat.
@@ -95,13 +97,15 @@ CREATE TABLE IF NOT EXISTS registration_requests (
     id_registration BIGSERIAL PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     nama VARCHAR(100),
+    jenis_personel VARCHAR(10),
     pangkat VARCHAR(80),
+    id_golongan INTEGER REFERENCES golongan (id_golongan),
     nip VARCHAR(30),
     satker_asal VARCHAR(150),
     email VARCHAR(150) UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    requested_role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (requested_role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker')),
-    approved_role VARCHAR(20) CHECK (approved_role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker')),
+    requested_role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (requested_role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker', 'operator_polres')),
+    approved_role VARCHAR(20) CHECK (approved_role IN ('admin', 'editor', 'viewer', 'admin_ssdm', 'operator_polda', 'operator_satker', 'operator_polres')),
     email_otp_hash CHAR(64),
     otp_expires_at TIMESTAMPTZ,
     otp_attempts INTEGER NOT NULL DEFAULT 0,

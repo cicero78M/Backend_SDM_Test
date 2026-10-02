@@ -10,6 +10,8 @@ import { router } from './routes.js';
 dotenv.config();
 // Membuat instance aplikasi Express.
 const app = express();
+// Backend berjalan di belakang Nginx, sehingga alamat klien dari X-Forwarded-For dapat dipercaya satu hop.
+app.set('trust proxy', 1);
 // Menentukan port dari environment atau memakai 3000.
 const port = Number(process.env.PORT || 3000);
 // Mengaktifkan parser JSON dengan batas payload 100 KB.

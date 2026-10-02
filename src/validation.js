@@ -1,5 +1,6 @@
 // Mengimpor Zod sebagai library validasi request.
 import { z } from 'zod';
+export const POLRI_RANKS = ['JENDERAL POLISI', 'KOMISARIS JENDERAL POLISI', 'INSPEKTUR JENDERAL POLISI', 'BRIGADIR JENDERAL POLISI', 'KOMISARIS BESAR POLISI', 'AJUN KOMISARIS BESAR POLISI', 'KOMISARIS POLISI', 'AJUN KOMISARIS POLISI', 'INSPEKTUR POLISI SATU', 'INSPEKTUR POLISI DUA', 'AJUN INSPEKTUR POLISI SATU', 'AJUN INSPEKTUR POLISI DUA', 'BRIGADIR POLISI KEPALA', 'BRIGADIR POLISI', 'BRIGADIR POLISI SATU', 'BRIGADIR POLISI DUA', 'AJUN BRIGADIR POLISI KEPALA', 'AJUN BRIGADIR POLISI', 'BHAYANGKARA KEPALA', 'BHAYANGKARA SATU', 'BHAYANGKARA DUA'];
 // Membatasi format tanggal menjadi YYYY-MM-DD.
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal harus YYYY-MM-DD.');
 // Schema registrasi; role sengaja tidak menerima input publik agar tidak terjadi privilege escalation.
@@ -7,10 +8,22 @@ export const registerSchema = z.object({
   username: z.string().trim().min(3).max(50),
   email: z.string().trim().email().max(150),
   nama: z.string().trim().min(2).max(100),
-  pangkat: z.string().trim().min(1).max(80),
-  nip: z.string().trim().min(1).max(30),
-  satker_asal: z.string().trim().min(2).max(150),
+  jenis_personel: z.enum(['POLRI', 'ASN']),
+  pangkat: z.string().trim().max(80).optional().nullable(),
+  id_golongan: z.coerce.number().int().positive().optional().nullable(),
+  nip: z.string().trim().regex(/^\d{8,18}$/, 'NRP/NIP harus 8–18 digit.'),
+  id_satker: z.coerce.number().int().positive(),
   password: z.string().min(8).max(100)
+}).superRefine((value, context) => {
+  if (value.jenis_personel === 'POLRI') {
+    if (!value.pangkat || !POLRI_RANKS.includes(value.pangkat)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['pangkat'], message: 'Pangkat POLRI harus dipilih dari daftar.' });
+    if (value.id_golongan) context.addIssue({ code: z.ZodIssueCode.custom, path: ['id_golongan'], message: 'POLRI tidak menggunakan golongan ASN.' });
+    if (!/^\d{8}$/.test(value.nip)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['nip'], message: 'NRP POLRI harus tepat 8 digit.' });
+  }
+  if (value.jenis_personel === 'ASN') {
+    if (!value.id_golongan) context.addIssue({ code: z.ZodIssueCode.custom, path: ['id_golongan'], message: 'Golongan ASN wajib dipilih.' });
+    if (!/^\d{18}$/.test(value.nip)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['nip'], message: 'NIP ASN harus tepat 18 digit.' });
+  }
 });
 export const registerVerifyEmailSchema = z.object({
   registration_id: z.coerce.number().int().positive(),
@@ -19,18 +32,34 @@ export const registerVerifyEmailSchema = z.object({
 export const registerResendOtpSchema = z.object({
   registration_id: z.coerce.number().int().positive(),
 });
-export const approvalSchema = z.object({ decision: z.enum(['approve', 'reject']), approved_role: z.enum(['viewer', 'editor', 'admin', 'admin_ssdm', 'operator_polda', 'operator_satker']).default('viewer'), note: z.string().trim().max(500).optional().nullable() });
-export const roleUpdateSchema = z.object({ role: z.enum(['viewer', 'editor', 'admin', 'admin_ssdm', 'operator_polda', 'operator_satker']) });
+export const approvalSchema = z.object({
+  decision: z.enum(['approve', 'reject']),
+  approved_role: z.enum(['viewer', 'editor', 'admin', 'admin_ssdm', 'operator_polda', 'operator_satker', 'operator_polres']).default('operator_satker'),
+  scope_satker: z.array(z.coerce.number().int().positive()).max(100).default([]).refine((items) => new Set(items).size === items.length, 'Scope Satker tidak boleh duplikat.'),
+  note: z.string().trim().max(500).optional().nullable()
+});
+export const roleUpdateSchema = z.object({ role: z.enum(['viewer', 'editor', 'admin', 'admin_ssdm', 'operator_polda', 'operator_satker', 'operator_polres']) });
 export const userStatusSchema = z.object({ is_active: z.boolean(), reason: z.string().trim().max(500).optional().nullable() });
 export const userScopeSchema = z.object({ id_satker: z.array(z.number().int().positive()).max(100).refine((items) => new Set(items).size === items.length, 'Satker tidak boleh duplikat.') });
 // Schema login dengan username dan password wajib.
 export const loginSchema = z.object({ username: z.string().trim().min(1), password: z.string().min(1) });
 // Schema perubahan password oleh user yang sedang login.
 export const changePasswordSchema = z.object({ current_password: z.string().min(1), new_password: z.string().min(8).max(100) });
-// Schema permintaan token lupa password; response tetap generik agar username tidak bocor.
-export const forgotPasswordSchema = z.object({ username: z.string().trim().min(1).max(50) });
-// Schema penggunaan token reset satu kali.
-export const resetPasswordSchema = z.object({ token: z.string().min(32).max(200), new_password: z.string().min(8).max(100) });
+// Schema permintaan reset; identifier dapat berupa username atau email.
+// Field username dipertahankan sementara agar bundle frontend lama tetap kompatibel.
+export const forgotPasswordSchema = z.object({
+  identifier: z.string().trim().min(1).max(150).optional(),
+  username: z.string().trim().min(1).max(50).optional(),
+}).refine(value => value.identifier || value.username, { message: 'Username atau email wajib diisi.', path: ['identifier'] });
+// Schema penggunaan token reset satu kali dengan konfirmasi password.
+export const resetPasswordSchema = z.object({
+  token: z.string().min(32).max(200),
+  new_password: z.string().min(8).max(100),
+  confirm_password: z.string().min(8).max(100),
+}).refine(value => value.new_password === value.confirm_password, {
+  message: 'Password baru dan masukan ulang password harus sama.',
+  path: ['confirm_password'],
+});
 // Schema reset password oleh administrator.
 export const adminResetPasswordSchema = z.object({ new_password: z.string().min(8).max(100) });
 // Schema lengkap payload CRUD pegawai.
@@ -47,6 +76,8 @@ export const employeeSchema = z.object({
   jenis_kelamin: z.enum(['L', 'P']),
   // Field tempat lahir boleh kosong.
   tempat_lahir: z.string().trim().max(50).optional().nullable(),
+  // Nama manual Polsek hanya diisi saat unit kerja yang dipilih berkode POLSEK.
+  nama_polsek: z.string().trim().max(100).optional().nullable(),
   // Tanggal lahir wajib memakai format yang ditentukan.
   tanggal_lahir: date,
   // Tanggal masuk wajib memakai format yang ditentukan.
@@ -76,8 +107,8 @@ export const jobHistorySchema = z.object({
   id_jabatan: z.number().int().positive(),
   // Satker tempat jabatan dijalankan.
   id_satker: z.number().int().positive(),
-  // Fungsi jabatan boleh belum diisi jika master belum tersedia.
-  id_fungsi: z.number().int().positive().optional().nullable(),
+  // Unsur Pembantu Pimpinan wajib berasal dari unit aktif pada Satker.
+  id_unit: z.number().int().positive(),
   // Nivelering jabatan boleh belum diisi pada data lama.
   id_level_jabatan: z.number().int().positive().optional().nullable(),
   // Status jabatan wajib menunjukkan status penugasan.

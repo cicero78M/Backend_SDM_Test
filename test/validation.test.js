@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { educationSchema, employeeSchema, jobHistorySchema, personnelSchema, registerSchema, registerVerifyEmailSchema, trainingSchema, userScopeSchema, validate } from '../src/validation.js';
+import { approvalSchema, educationSchema, employeeSchema, forgotPasswordSchema, jobHistorySchema, personnelSchema, registerSchema, registerVerifyEmailSchema, resetPasswordSchema, trainingSchema, userScopeSchema, validate } from '../src/validation.js';
 
 const basePersonel = {
   nip: '12345678',
@@ -44,6 +44,7 @@ test('validasi menolak histori dengan tanggal selesai sebelum tanggal mulai', ()
   const result = validate(jobHistorySchema, {
     id_jabatan: 1,
     id_satker: 1,
+    id_unit: 1,
     id_status_jabatan: 1,
     tanggal_mulai: '2025-01-01',
     tanggal_selesai: '2024-12-31'
@@ -67,11 +68,35 @@ test('validasi diklat menolak nilai di atas 100 dan tanggal terbalik', () => {
 });
 
 test('registrasi mewajibkan email valid', () => {
-  const result = validate(registerSchema, { username: 'budi', email: 'bukan-email', nama: 'Budi Santoso', pangkat: 'Briptu', nip: '12345678', satker_asal: 'Satker Demo', password: 'password-kuat' });
+  const result = validate(registerSchema, { username: 'budi', email: 'bukan-email', nama: 'Budi Santoso', pangkat: 'Briptu', nip: '12345678', id_satker: 1, password: 'password-kuat' });
   assert.equal(result.error[0].field, 'email');
+});
+
+test('registrasi membatasi NRP POLRI 8 digit dan NIP ASN 18 digit', () => {
+  const polri = validate(registerSchema, { username: 'polri8', email: 'polri8@example.com', nama: 'Polri Delapan', jenis_personel: 'POLRI', pangkat: 'BRIGADIR POLISI', nip: '1234567', id_satker: 1, password: 'password-kuat' });
+  const asn = validate(registerSchema, { username: 'asn18', email: 'asn18@example.com', nama: 'ASN Delapan Belas', jenis_personel: 'ASN', id_golongan: 1, nip: '12345678901234567', id_satker: 1, password: 'password-kuat' });
+  assert.equal(polri.error.some(item => item.field === 'nip'), true);
+  assert.equal(asn.error.some(item => item.field === 'nip'), true);
+});
+
+test('approval menerima scope Satker bertingkat dan menolak duplikat', () => {
+  assert.equal(validate(approvalSchema, { decision: 'approve', approved_role: 'operator_satker', scope_satker: [236, 1005] }).error, undefined);
+  assert.equal(validate(approvalSchema, { decision: 'approve', scope_satker: [236, 236] }).error[0].field, 'scope_satker');
 });
 
 test('OTP registrasi harus tepat enam digit', () => {
   assert.equal(validate(registerVerifyEmailSchema, { registration_id: 1, otp: '123456' }).error, undefined);
   assert.equal(validate(registerVerifyEmailSchema, { registration_id: 1, otp: '12345' }).error[0].field, 'otp');
+});
+
+test('reset password menerima username atau email sebagai identifier', () => {
+  assert.equal(validate(forgotPasswordSchema, { identifier: 'user@example.com' }).error, undefined);
+  assert.equal(validate(forgotPasswordSchema, { identifier: 'admin_ssdm' }).error, undefined);
+  assert.equal(validate(forgotPasswordSchema, { username: 'admin_ssdm' }).error, undefined);
+  assert.equal(validate(forgotPasswordSchema, {}).error[0].field, 'identifier');
+});
+
+test('reset password mewajibkan konfirmasi yang sama', () => {
+  assert.equal(validate(resetPasswordSchema, { token: 'a'.repeat(32), new_password: 'password-baru', confirm_password: 'password-baru' }).error, undefined);
+  assert.equal(validate(resetPasswordSchema, { token: 'a'.repeat(32), new_password: 'password-baru', confirm_password: 'berbeda-123' }).error[0].field, 'confirm_password');
 });
