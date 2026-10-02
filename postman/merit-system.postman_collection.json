@@ -62,6 +62,10 @@
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}/riwayat-jabatan" }
     },
     {
+      "name": "Update riwayat jabatan",
+      "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"id_jabatan\": {{jabatan_id}},\n  \"id_satker\": {{satker_id}},\n  \"id_status_jabatan\": 1,\n  \"tanggal_mulai\": \"2020-01-01\",\n  \"keterangan\": \"Smoke test CRUD updated\"\n}" }, "url": "{{base_url}}/personel/{{personel_id}}/riwayat-jabatan/{{history_id}}" }
+    },
+    {
       "name": "Delete riwayat jabatan",
       "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{base_url}}/personel/{{personel_id}}/riwayat-jabatan/{{history_id}}" }
     },

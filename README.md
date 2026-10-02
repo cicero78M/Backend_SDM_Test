@@ -47,13 +47,13 @@ Frontend tidak menyimpan secret. Keputusan permission tetap dilakukan backend wa
 
 ## Kompetensi yang dicakup
 
-| Kompetensi | Implementasi saat ini / target |
+| Kompetensi | Implementasi saat ini |
 |---|---|
 | REST API & HTTP Method | Express, prefix `/api/v1`, GET/POST/PUT/DELETE |
 | Routing | Router modular pada `src/routes.js` |
-| CRUD & Database | CRUD `pegawai` saat ini; target CRUD `personel` dan `riwayat_jabatan` |
+| CRUD & Database | CRUD `pegawai`, `personel`, `riwayat_jabatan`, pendidikan, dan diklat |
 | Authentication | JWT Bearer token, password bcrypt |
-| Authorization / Permission | Role dasar `admin`, `editor`, `viewer`; target Admin SSDM/Operator Polda/Operator Satker + scope |
+| Authorization / Permission | Role `admin`, `admin_ssdm`, `operator_polda`, `operator_satker`, `editor`, `viewer` + scope organisasi |
 | Validation | Zod untuk format NIP/NIK/tanggal dan field wajib |
 | Error Handling | Status 400/401/403/404/409/500 dalam response JSON |
 | Version Control | Git dan repository GitHub |
