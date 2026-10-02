@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { comparePassword, hashPassword, hashResetToken, signToken, authenticate, authorize } from './auth.js';
 // Mengimpor helper query PostgreSQL.
 import { query, withTransaction } from './db.js';
+import { assertFunctionBelongsToSatker, assertPersonnelAccess, assertSatkerAccess, assertUnitBelongsToSatker, canManagePersonnel, isAdministrator, writeAudit } from './access.js';
 // Mengimpor schema validasi request.
 import { adminResetPasswordSchema, approvalSchema, changePasswordSchema, educationSchema, employeeSchema, forgotPasswordSchema, jobHistorySchema, loginSchema, meritAssessmentSchema, personnelSchema, registerSchema, resetPasswordSchema, roleUpdateSchema, trainingSchema, userScopeSchema, userStatusSchema, validate } from './validation.js';
 // Membuat router yang akan dipasang di prefix /api/v1.
@@ -265,42 +266,6 @@ const personnelSelect = `SELECT p.*, u.nama_unit, j.nama_jabatan, g.kode_golonga
   LEFT JOIN golongan g ON g.id_golongan = p.id_golongan
   LEFT JOIN satker s ON s.id_satker = p.id_satker
   LEFT JOIN satker parent ON parent.id_satker = s.id_satker_induk`;
-
-// Role administrator dapat mengakses semua scope; role operator wajib memiliki scope.
-const isAdministrator = (user) => ['admin', 'admin_ssdm'].includes(user.role);
-// Role berikut boleh membuat atau mengubah data dalam scope yang dimiliki.
-const canManagePersonnel = (user) => ['admin', 'admin_ssdm', 'editor', 'operator_polda', 'operator_satker'].includes(user.role);
-const writeAudit = (req, action, resource, resourceId, metadata = {}) => query(
-  `INSERT INTO audit_log (id_user, action, resource, resource_id, request_id, metadata)
-   VALUES ($1, $2, $3, $4, $5, $6)`,
-  [req.user.id_user, action, resource, resourceId == null ? null : String(resourceId), req.get('x-request-id') || null, JSON.stringify(metadata)]
-);
-
-// Memastikan personel berada dalam scope user sebelum data dibaca atau diubah.
-async function assertPersonnelAccess(user, personnelId, requiredSatkerId = null) {
-  if (isAdministrator(user)) return true;
-  const params = [user.id_user, personnelId];
-  const satkerFilter = requiredSatkerId ? ' AND p.id_satker = $3' : '';
-  if (requiredSatkerId) params.push(requiredSatkerId);
-  const result = await query(`SELECT 1 FROM pegawai p JOIN user_scope us ON us.id_satker = p.id_satker WHERE us.id_user = $1 AND p.id_pegawai = $2${satkerFilter}`, params);
-  return Boolean(result.rows[0]);
-}
-
-// Memastikan Satker tujuan termasuk scope user saat membuat histori jabatan.
-async function assertSatkerAccess(user, satkerId) {
-  if (isAdministrator(user)) return true;
-  const result = await query('SELECT 1 FROM user_scope WHERE id_user = $1 AND id_satker = $2', [user.id_user, satkerId]);
-  return Boolean(result.rows[0]);
-}
-async function assertUnitBelongsToSatker(unitId, satkerId) {
-  const result = await query('SELECT 1 FROM unit_kerja WHERE id_unit=$1 AND id_satker=$2 AND is_active=true', [unitId, satkerId]);
-  return Boolean(result.rows[0]);
-}
-async function assertFunctionBelongsToSatker(functionId, satkerId) {
-  if (functionId == null) return true;
-  const result = await query('SELECT 1 FROM satker_fungsi WHERE id_fungsi=$1 AND id_satker=$2 AND is_active=true', [functionId, satkerId]);
-  return Boolean(result.rows[0]);
-}
 
 // Master karier dibaca oleh seluruh user terautentikasi; perubahan master akan
 // menjadi tahap administrasi terpisah agar tidak tercampur dengan CRUD personel.
