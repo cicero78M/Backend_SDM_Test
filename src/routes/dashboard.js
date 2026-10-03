@@ -27,7 +27,20 @@ export function registerDashboardRoutes(router) {
       const [total, status, education, training, mutation, service, retirement, positionGroup, ageGroup, rankGroup, polriRankGroup, asnRankGroup, dataQuality, stagingQuality] = await Promise.all([
         query(`SELECT COUNT(*)::int AS total FROM pegawai p ${peopleWhere}`, params.slice(0, isAdministrator(req.user) ? 0 : 1)),
         query(`SELECT COALESCE(NULLIF(TRIM(status_pegawai),''),'TIDAK DIISI') AS label, COUNT(*)::int AS value FROM pegawai p ${peopleWhere} GROUP BY COALESCE(NULLIF(TRIM(status_pegawai),''),'TIDAK DIISI') ORDER BY value DESC, label ASC`, params.slice(0, isAdministrator(req.user) ? 0 : 1)),
-        query(`WITH q AS (SELECT r.id_pegawai, COALESCE(NULLIF(TRIM(r.jenjang),''),'Tidak diisi') AS jenjang FROM riwayat_pendidikan r UNION SELECT d.id_pegawai, COALESCE(NULLIF(TRIM(d.jenjang),''),'Tidak diisi') FROM riwayat_pendidikan_personel d) SELECT q.jenjang AS label, COUNT(DISTINCT q.id_pegawai)::int AS value FROM q JOIN pegawai p ON p.id_pegawai=q.id_pegawai WHERE 1=1${personScope} GROUP BY q.jenjang ORDER BY value DESC, label ASC`, params.slice(0, isAdministrator(req.user) ? 0 : 1)),
+        query(`WITH education_records AS (
+            SELECT r.id_pegawai, r.jenjang, r.tahun_lulus, r.id_pendidikan, 0 AS source_priority FROM riwayat_pendidikan r
+            UNION ALL
+            SELECT d.id_pegawai, d.jenjang, d.tahun_lulus, d.id_pendidikan, 1 AS source_priority FROM riwayat_pendidikan_personel d
+          ), latest_education AS (
+            SELECT DISTINCT ON (id_pegawai) id_pegawai, jenjang
+            FROM education_records
+            ORDER BY id_pegawai, tahun_lulus DESC NULLS LAST, source_priority DESC, id_pendidikan DESC
+          )
+          SELECT COALESCE(NULLIF(TRIM(e.jenjang),''),'Tidak diisi') AS label, COUNT(*)::int AS value
+          FROM pegawai p LEFT JOIN latest_education e ON e.id_pegawai=p.id_pegawai
+          WHERE 1=1${personScope}
+          GROUP BY COALESCE(NULLIF(TRIM(e.jenjang),''),'Tidak diisi')
+          ORDER BY value DESC, label ASC`, params.slice(0, isAdministrator(req.user) ? 0 : 1)),
         query(`WITH q AS (
             SELECT l.id_pegawai, d.nama_diklat, l.tanggal_mulai, l.tanggal_selesai FROM riwayat_diklat l JOIN diklat d ON d.id_diklat=l.id_diklat
             UNION
