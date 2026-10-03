@@ -16,7 +16,7 @@ Aplikasi mendukung pengelolaan data personel secara sistematis agar Admin SSDM d
 
 ## Status prototype
 
-Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi request, dan schema PostgreSQL. Database staging pada server terverifikasi sebagai database `postgres`; data yang terdeteksi tetap dipertahankan. Pengembangan menuju domain Merit System dilakukan bertahap:
+Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi request, dan schema PostgreSQL. Pengembangan menuju domain Merit System dan kebutuhan seleksi dilakukan bertahap:
 
 | Tahap | Status | Cakupan |
 |---|---|---|
@@ -25,7 +25,7 @@ Baseline saat ini sudah menyediakan CRUD `pegawai`, JWT, role dasar, validasi re
 | Scope organisasi | Selesai | Satker/Polda, relasi user-scope, pembatasan data operator, transaksi scope, dan operator Polres |
 | Administrasi | Selesai untuk prototype | User/role, approval registrasi admin pertama, scope, audit perubahan, dan UI Administrasi Akses |
 | Integrasi frontend | Selesai untuk prototype | Login, visualisasi, personel, profil, histori, kualifikasi, form input/edit, dan UI scope |
-| Dashboard analitik | Selesai untuk prototype | Agregasi status, golongan/pangkat POLRI dan ASN, pendidikan, diklat berulang, mutasi berulang, kualitas data, usia, lama dinas, dan proyeksi pensiun berbasis scope |
+| Dashboard analitik | Selesai untuk prototype | Agregasi status, golongan/pangkat POLRI dan ASN, pendidikan, diklat berulang, mutasi berulang, kualitas data, usia, lama dinas, dan proyeksi pensiun berbasis scope untuk mendukung seleksi |
 | Pengujian | Lulus | 10 test unit/authorization/validasi lulus; runner E2E demo tiga persona tersedia |
 
 Rincian target dan kriteria penerimaan tersedia di [`docs/RENCANA_PENGEMBANGAN.md`](docs/RENCANA_PENGEMBANGAN.md).
@@ -164,7 +164,7 @@ Endpoint berikut tersedia setelah migration schema Merit System diterapkan:
 - Endpoint master data fungsi, jabatan, level/nivelering, status jabatan, dan Satker.
 - `GET /api/v1/auth/users/:id/scopes` — melihat scope Satker user oleh admin.
 - `PUT /api/v1/auth/users/:id/scopes` — mengganti scope Satker user secara transaksional oleh admin.
-- `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, golongan/pangkat terpisah untuk POLRI dan ASN, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kualitas data, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user. Ringkasan diklat dan mutasi mencakup personel yang pernah, belum pernah, serta memiliki lebih dari satu riwayat. Kualitas data mencakup kelengkapan field personel dan status validasi staging.
+- `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, golongan/pangkat terpisah untuk POLRI dan ASN, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kualitas data, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user. Ringkasan diklat dan mutasi mencakup personel yang pernah, belum pernah, serta memiliki lebih dari satu riwayat.
 
 Endpoint master yang dipakai form personel dan riwayat jabatan:
 
@@ -225,7 +225,6 @@ satker ───< unit_kerja ───< jabatan_unit_kerja >── jabatan
           │                                      │
           └── golongan                         └── merit_indicator
 
-staging_pegawai     # data mentah sebelum validasi/promosi
 riwayat_pendidikan  # tabel legacy analitik
 riwayat_diklat      # tabel legacy analitik
 riwayat_mutasi      # tabel legacy analitik
@@ -246,7 +245,7 @@ riwayat_mutasi      # tabel legacy analitik
 | Akses | `users`, `user_scope` | Kredensial hash, role, status aktif, dan scope Satker operator. |
 | Registrasi | `registration_requests`, `password_reset_tokens` | Approval akun, verifikasi OTP, dan token reset password sekali pakai yang disimpan sebagai hash. |
 | Audit | `audit_log` | Aksi `CREATE`, `READ`, `UPDATE`, `DELETE`, resource, request ID, user, dan metadata JSONB. |
-| Staging/legacy | `staging_pegawai`, `riwayat_pendidikan`, `riwayat_diklat`, `riwayat_mutasi`, `diklat` | Sumber impor dan data lama yang dipertahankan untuk cleansing serta agregasi dashboard. |
+| Legacy analitik | `riwayat_pendidikan`, `riwayat_diklat`, `riwayat_mutasi`, `diklat` | Data historis yang dipertahankan untuk kebutuhan analitik dan seleksi. |
 
 ### Constraint dan index penting
 
@@ -261,7 +260,7 @@ riwayat_mutasi      # tabel legacy analitik
 - `jabatan_unit_kerja` memiliki primary key gabungan dan index mapping aktif
   per unit.
 - Index tersedia untuk pencarian nama/unit/Satker, histori per personel,
-  staging berdasarkan status validasi, kualifikasi personel, assessment merit,
+  kualifikasi personel, assessment merit,
   registrasi, dan token reset.
 
 ### Urutan instalasi dan audit deployment
@@ -292,7 +291,8 @@ tabel runtime dilengkapi oleh migration `037`, sedangkan backfill riwayat legacy
 dilakukan oleh migration `038`, histori jabatan aktif dibentuk oleh migration `039`, status histori aktif/nonaktif disiapkan oleh migration `040`, histori deployment dicatat oleh migration `041`, dan status pensiun otomatis diperbarui oleh migration `043`. Untuk menguji
 fitur terbaru, seluruh migration harus diterapkan berurutan.
 
-Sebelum menjalankan migration, pastikan `DATABASE_URL` benar-benar menunjuk database staging. Verifikasi tanpa menampilkan password:
+Sebelum menjalankan migration, pastikan `DATABASE_URL` menunjuk database aplikasi
+yang sesuai untuk pengembangan atau pengujian. Verifikasi tanpa menampilkan password:
 
 ```bash
 psql "$DATABASE_URL" -X -Atc "SELECT current_database(), current_user;"
@@ -348,7 +348,19 @@ Jalankan API dengan `DATABASE_URL="$DEMO_DATABASE_URL"`, lalu jalankan. Kredensi
 npm run test:e2e:demo
 ```
 
-Runner memverifikasi health check, login Admin SSDM/Operator Polda/Operator Satker, daftar personel berbasis scope, dan scope operator. Isi `DEMO_*_USERNAME` serta `DEMO_*_PASSWORD` melalui environment lokal sebelum menjalankan runner. Runner menolak database `postgres`, `template0`, `template1`, atau nama yang tidak mengandung `demo`, `e2e`, atau `test`. Seed demo tidak dijalankan otomatis dan tidak boleh dijalankan pada database staging aktif.
+Runner memverifikasi health check, login Admin SSDM/Operator Polda/Operator Satker, daftar personel berbasis scope, dan scope operator. Isi `DEMO_*_USERNAME` serta `DEMO_*_PASSWORD` melalui environment lokal sebelum menjalankan runner. Runner menolak database `postgres`, `template0`, `template1`, atau nama yang tidak mengandung `demo`, `e2e`, atau `test`.
+
+### Kebutuhan seleksi
+
+Implementasi seleksi menggunakan data personel pada domain utama aplikasi.
+Kebutuhan minimum meliputi:
+
+- identitas, jenis personel, pangkat/golongan, Satker, unit, dan status aktif;
+- jabatan aktif serta riwayat jabatan yang kronologis;
+- pendidikan, diklat, masa dinas, dan kualifikasi lain;
+- periode seleksi, indikator merit, bobot, nilai, bukti, dan status verifikasi;
+- pembatasan kandidat berdasarkan scope organisasi dan role pengguna;
+- audit atas perubahan data, penilaian, verifikasi, dan keputusan seleksi.
 
 ## Matriks role dan scope
 
