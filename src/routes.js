@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { comparePassword, hashPassword, hashResetToken, signToken, authenticate, authorize } from './auth.js';
 // Mengimpor helper query PostgreSQL.
 import { query, withTransaction } from './db.js';
+import { getOrSetJson, invalidateKeys, withRedisLock } from './cache.js';
 import { assertFunctionBelongsToSatker, assertPersonnelAccess, assertSatkerAccess, assertUnitBelongsToSatker, canManagePersonnel, isAdministrator, isPolresOperator, writeAudit } from './access.js';
 import { sendPasswordResetEmail, sendRegistrationOtp } from './email.js';
 import { generateOtp, hashOtp, OTP_MAX_ATTEMPTS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_MINUTES } from './otp.js';
@@ -496,6 +497,19 @@ router.get('/master/level-jabatan', authenticate, async (_req, res, next) => {
 router.get('/master/status-jabatan', authenticate, async (_req, res, next) => {
   try { const result = await query('SELECT id_status_jabatan, kode_status, nama_status, is_active FROM status_jabatan WHERE is_active=true ORDER BY nama_status ASC'); return res.json({ data: result.rows }); } catch (error) { return next(error); }
 });
+// Status personel ditampilkan dari nilai aktual agar filter tidak mengarang kategori.
+router.get('/master/status-personel', authenticate, async (_req, res, next) => {
+  try {
+    const data = await getOrSetJson('master:status-personel', async () => {
+      const result = await query(`SELECT status
+      FROM (SELECT DISTINCT TRIM(status_pegawai) AS status
+            FROM pegawai WHERE NULLIF(TRIM(status_pegawai), '') IS NOT NULL) statuses
+      ORDER BY CASE WHEN UPPER(status)='AKTIF' THEN 0 ELSE 1 END, status ASC`);
+      return result.rows;
+    }, 300);
+    return res.json({ data });
+  } catch (error) { return next(error); }
+});
 router.get('/master/unit-kerja', authenticate, async (req, res, next) => {
   try { const satkerId = Number(req.query.satker_id); const result = satkerId ? await query('SELECT id_unit, kode_unit, nama_unit, tipe_unit, id_unit_induk, is_active FROM unit_kerja u WHERE id_satker=$1 AND is_active=true AND (COALESCE(is_placeholder,false)=false OR NOT EXISTS (SELECT 1 FROM unit_kerja real_u WHERE real_u.id_satker=u.id_satker AND COALESCE(real_u.is_placeholder,false)=false)) ORDER BY nama_unit ASC', [satkerId]) : await query('SELECT id_unit, nama_unit FROM unit_kerja WHERE is_active=true ORDER BY nama_unit ASC'); return res.json({ data: result.rows }); } catch (error) { return next(error); }
 });
@@ -533,6 +547,8 @@ router.get('/master/golongan', authenticate, async (_req, res, next) => {
 // sumber legacy/domain dan pembatasan scope tetap konsisten di backend.
 router.get('/dashboard/overview', authenticate, async (req, res, next) => {
   try {
+    const cacheKey = `dashboard:overview:user:${req.user.id_user}:role:${req.user.role}`;
+    const cached = await getOrSetJson(cacheKey, async () => {
     const params = [];
     const scope = alias => {
       if (isAdministrator(req.user)) return '';
@@ -559,7 +575,9 @@ router.get('/dashboard/overview', authenticate, async (req, res, next) => {
     ]);
     const trainingRow = training.rows[0] || { pernah: 0, lebih_dari_satu: 0, total: 0 };
     const mutationRow = mutation.rows[0] || { pernah: 0, lebih_dari_satu: 0, total: 0 };
-    return res.json({ data: { total_personel: total.rows[0]?.total || 0, status: status.rows, golongan: rankGroup.rows, golongan_polri: polriRankGroup.rows, golongan_asn: asnRankGroup.rows, pendidikan: education.rows, diklat: { pernah: Number(trainingRow.pernah), belum: Math.max(Number(trainingRow.total) - Number(trainingRow.pernah), 0), lebih_dari_satu: Number(trainingRow.lebih_dari_satu), total: Number(trainingRow.total) }, mutasi: { pernah: Number(mutationRow.pernah), belum: Math.max(Number(mutationRow.total) - Number(mutationRow.pernah), 0), lebih_dari_satu: Number(mutationRow.lebih_dari_satu), total: Number(mutationRow.total) }, kualitas_data: dataQuality.rows, validasi_staging: stagingQuality.rows, lama_dinas: service.rows, pensiun: retirement.rows[0] || { sudah: 0, mendekati: 0, total: 0 }, kelompok_jabatan: positionGroup.rows, kelompok_usia: ageGroup.rows } });
+    return { total_personel: total.rows[0]?.total || 0, status: status.rows, golongan: rankGroup.rows, golongan_polri: polriRankGroup.rows, golongan_asn: asnRankGroup.rows, pendidikan: education.rows, diklat: { pernah: Number(trainingRow.pernah), belum: Math.max(Number(trainingRow.total) - Number(trainingRow.pernah), 0), lebih_dari_satu: Number(trainingRow.lebih_dari_satu), total: Number(trainingRow.total) }, mutasi: { pernah: Number(mutationRow.pernah), belum: Math.max(Number(mutationRow.total) - Number(mutationRow.pernah), 0), lebih_dari_satu: Number(mutationRow.lebih_dari_satu), total: Number(mutationRow.total) }, kualitas_data: dataQuality.rows, validasi_staging: stagingQuality.rows, lama_dinas: service.rows, pensiun: retirement.rows[0] || { sudah: 0, mendekati: 0, total: 0 }, kelompok_jabatan: positionGroup.rows, kelompok_usia: ageGroup.rows };
+    }, 30);
+    return res.json({ data: cached });
   } catch (error) { return next(error); }
 });
 
@@ -575,13 +593,16 @@ router.get('/personel', authenticate, async (req, res, next) => {
     const addFilter = (sql, value) => { params.push(value); filters.push(sql.replace('?', `$${params.length}`)); };
     const status = String(req.query.status || '').trim().toUpperCase();
     const education = String(req.query.education || '').trim().toUpperCase();
+    const position = String(req.query.position || '').trim().toLowerCase();
     const training = String(req.query.training || '').trim().toLowerCase();
     const mutation = String(req.query.mutation || '').trim().toLowerCase();
     const serviceMin = Number(req.query.service_min);
     const serviceMax = Number(req.query.service_max);
-    if (status && status !== 'ALL') addFilter(' AND p.status_pegawai = ?', status);
+    if (status && status !== 'ALL') addFilter(' AND UPPER(TRIM(p.status_pegawai)) = ?', status);
     const educationRank = { SD: 1, SMP: 2, SMA: 3, D1: 4, D2: 5, D3: 6, D4: 7, S1: 7, S2: 8, S3: 9 };
-    if (educationRank[education]) addFilter(` AND EXISTS (SELECT 1 FROM (SELECT id_pegawai, jenjang FROM riwayat_pendidikan_personel UNION ALL SELECT id_pegawai, jenjang FROM riwayat_pendidikan) ep WHERE ep.id_pegawai = p.id_pegawai AND CASE ep.jenjang WHEN 'SD' THEN 1 WHEN 'SMP' THEN 2 WHEN 'SMA' THEN 3 WHEN 'D1' THEN 4 WHEN 'D2' THEN 5 WHEN 'D3' THEN 6 WHEN 'D4' THEN 7 WHEN 'S1' THEN 7 WHEN 'S2' THEN 8 WHEN 'S3' THEN 9 ELSE 0 END >= ?)`, educationRank[education]);
+    if (educationRank[education]) addFilter(` AND EXISTS (SELECT 1 FROM (SELECT id_pegawai, jenjang FROM riwayat_pendidikan_personel UNION ALL SELECT id_pegawai, jenjang FROM riwayat_pendidikan) ep WHERE ep.id_pegawai = p.id_pegawai AND CASE UPPER(TRIM(ep.jenjang)) WHEN 'SD' THEN 1 WHEN 'SMP' THEN 2 WHEN 'SMA' THEN 3 WHEN 'D1' THEN 4 WHEN 'D2' THEN 5 WHEN 'D3' THEN 6 WHEN 'D4' THEN 7 WHEN 'S1' THEN 7 WHEN 'S2' THEN 8 WHEN 'S3' THEN 9 ELSE 0 END >= ?)`, educationRank[education]);
+    if (position === 'yes') filters.push(' AND EXISTS (SELECT 1 FROM riwayat_jabatan rj WHERE rj.id_pegawai = p.id_pegawai)');
+    if (position === 'no') filters.push(' AND NOT EXISTS (SELECT 1 FROM riwayat_jabatan rj WHERE rj.id_pegawai = p.id_pegawai)');
     if (training === 'yes') filters.push(' AND EXISTS (SELECT 1 FROM (SELECT id_pegawai FROM riwayat_diklat_personel UNION ALL SELECT id_pegawai FROM riwayat_diklat) dt WHERE dt.id_pegawai = p.id_pegawai)');
     if (training === 'no') filters.push(' AND NOT EXISTS (SELECT 1 FROM (SELECT id_pegawai FROM riwayat_diklat_personel UNION ALL SELECT id_pegawai FROM riwayat_diklat) dt WHERE dt.id_pegawai = p.id_pegawai)');
     if (mutation === 'yes') filters.push(' AND EXISTS (SELECT 1 FROM riwayat_mutasi mt WHERE mt.id_pegawai = p.id_pegawai)');
@@ -616,16 +637,54 @@ router.get('/personel/:id/profile', authenticate, async (req, res, next) => {
     if (!(await assertPersonnelAccess(req.user, req.params.id))) return res.status(403).json({ error: 'Personel di luar scope Anda.' });
     const person = await query(`${personnelSelect} WHERE p.id_pegawai = $1`, [req.params.id]);
     if (!person.rows[0]) return res.status(404).json({ error: 'Personel tidak ditemukan.' });
-    const history = await query(`SELECT r.*, j.nama_jabatan, s.kode_satker, s.nama_satker, u.kode_unit, u.nama_unit, u.tipe_unit, l.kode_level, l.nama_level, st.kode_status, st.nama_status
-      FROM riwayat_jabatan r JOIN jabatan j ON j.id_jabatan = r.id_jabatan JOIN satker s ON s.id_satker = r.id_satker
-      LEFT JOIN unit_kerja u ON u.id_unit = r.id_unit LEFT JOIN level_jabatan l ON l.id_level_jabatan = r.id_level_jabatan
-      JOIN status_jabatan st ON st.id_status_jabatan = r.id_status_jabatan
-      WHERE r.id_pegawai = $1 ORDER BY r.tanggal_mulai ASC, r.id_riwayat_jabatan ASC`, [req.params.id]);
-    const education = await query(`SELECT id_pendidikan, id_pegawai, jenjang, institusi, jurusan, tahun_lulus, nomor_ijazah, keterangan, created_at, updated_at
-      FROM riwayat_pendidikan_personel WHERE id_pegawai=$1 ORDER BY tahun_lulus DESC NULLS LAST, id_pendidikan DESC`, [req.params.id]);
-    const training = await query(`SELECT id_diklat, id_pegawai, nama_diklat, jenis_diklat, penyelenggara, tanggal_mulai, tanggal_selesai, jam_pelajaran, nilai, nomor_sertifikat, keterangan, created_at, updated_at
-      FROM riwayat_diklat_personel WHERE id_pegawai=$1 ORDER BY tanggal_mulai DESC NULLS LAST, id_diklat DESC`, [req.params.id]);
-    return res.json({ data: { personel: person.rows[0], riwayat_jabatan: history.rows, pendidikan: education.rows, diklat: training.rows } });
+    const history = await query(`WITH history_source AS (
+        SELECT r.id_riwayat_jabatan, r.id_pegawai, r.id_jabatan, r.id_satker, r.id_unit, r.id_level_jabatan, r.id_status_jabatan,
+               r.tanggal_mulai, r.tanggal_selesai, r.keterangan, TRUE AS dapat_diedit, 'domain'::text AS sumber_data
+        FROM riwayat_jabatan r WHERE r.id_pegawai=$1
+        UNION ALL
+        SELECT -p.id_pegawai AS id_riwayat_jabatan, p.id_pegawai, p.id_jabatan, p.id_satker, p.id_unit, NULL::integer AS id_level_jabatan,
+               NULL::integer AS id_status_jabatan, p.tanggal_masuk AS tanggal_mulai, NULL::date AS tanggal_selesai,
+               'Jabatan aktif dari data personel legacy; histori jabatan terpisah belum tersedia.'::text AS keterangan,
+               FALSE AS dapat_diedit, 'legacy-current'::text AS sumber_data
+        FROM pegawai p
+        WHERE p.id_pegawai=$1 AND NOT EXISTS (SELECT 1 FROM riwayat_jabatan r WHERE r.id_pegawai=p.id_pegawai)
+      )
+      SELECT h.*, j.nama_jabatan, s.kode_satker, s.nama_satker, u.kode_unit, u.nama_unit, u.tipe_unit, l.kode_level, l.nama_level, st.kode_status, st.nama_status
+      FROM history_source h LEFT JOIN jabatan j ON j.id_jabatan = h.id_jabatan LEFT JOIN satker s ON s.id_satker = h.id_satker
+      LEFT JOIN unit_kerja u ON u.id_unit = h.id_unit LEFT JOIN level_jabatan l ON l.id_level_jabatan = h.id_level_jabatan
+      LEFT JOIN status_jabatan st ON st.id_status_jabatan = h.id_status_jabatan
+      ORDER BY h.tanggal_mulai ASC NULLS LAST, h.id_riwayat_jabatan ASC`, [req.params.id]);
+    const education = await query(`SELECT id_pendidikan, id_pegawai, jenjang, institusi, jurusan, tahun_lulus, NULL::text AS nomor_ijazah, NULL::text AS keterangan, NULL::timestamptz AS created_at, NULL::timestamptz AS updated_at, 'legacy'::text AS sumber_data, FALSE AS dapat_diedit
+      FROM riwayat_pendidikan l WHERE l.id_pegawai=$1
+        AND NOT EXISTS (SELECT 1 FROM riwayat_pendidikan_personel d WHERE d.id_pegawai=l.id_pegawai AND UPPER(TRIM(d.jenjang)) = UPPER(TRIM(l.jenjang)) AND d.institusi IS NOT DISTINCT FROM l.institusi AND d.jurusan IS NOT DISTINCT FROM l.jurusan AND d.tahun_lulus IS NOT DISTINCT FROM l.tahun_lulus)
+      UNION ALL
+      SELECT id_pendidikan, id_pegawai, jenjang, institusi, jurusan, tahun_lulus, nomor_ijazah, keterangan, created_at, updated_at, 'domain'::text AS sumber_data, TRUE AS dapat_diedit
+      FROM riwayat_pendidikan_personel WHERE id_pegawai=$1
+      ORDER BY tahun_lulus DESC NULLS LAST, id_pendidikan DESC`, [req.params.id]);
+    const training = await query(`SELECT rd.id_riwayat_diklat AS id_diklat, rd.id_pegawai, d.nama_diklat, NULL::text AS jenis_diklat, d.penyelenggara, rd.tanggal_mulai, rd.tanggal_selesai, d.jam_pelajaran, rd.nilai, NULL::text AS nomor_sertifikat, NULL::text AS keterangan, NULL::timestamptz AS created_at, NULL::timestamptz AS updated_at, 'legacy'::text AS sumber_data, FALSE AS dapat_diedit
+      FROM riwayat_diklat rd JOIN diklat d ON d.id_diklat=rd.id_diklat WHERE rd.id_pegawai=$1
+        AND NOT EXISTS (SELECT 1 FROM riwayat_diklat_personel p WHERE p.id_pegawai=rd.id_pegawai AND p.nama_diklat IS NOT DISTINCT FROM d.nama_diklat AND p.penyelenggara IS NOT DISTINCT FROM d.penyelenggara AND p.tanggal_mulai IS NOT DISTINCT FROM rd.tanggal_mulai AND p.tanggal_selesai IS NOT DISTINCT FROM rd.tanggal_selesai AND p.nilai IS NOT DISTINCT FROM rd.nilai)
+      UNION ALL
+      SELECT id_diklat, id_pegawai, nama_diklat, jenis_diklat, penyelenggara, tanggal_mulai, tanggal_selesai, jam_pelajaran, nilai, nomor_sertifikat, keterangan, created_at, updated_at, 'domain'::text AS sumber_data, TRUE AS dapat_diedit
+      FROM riwayat_diklat_personel WHERE id_pegawai=$1
+      ORDER BY tanggal_mulai DESC NULLS LAST, id_diklat DESC`, [req.params.id]);
+    const mutation = await query(`WITH mutation_source AS (
+        SELECT m.id_mutasi, m.id_pegawai, m.id_unit_lama, m.id_unit_baru, m.nomor_sk, m.tanggal_sk, m.tmt_mutasi, 'domain'::text AS sumber_data
+        FROM riwayat_mutasi_personel m WHERE m.id_pegawai=$1
+        UNION ALL
+        SELECT l.id_mutasi, l.id_pegawai, l.id_unit_lama, l.id_unit_baru, l.nomor_sk, l.tanggal_sk, l.tmt_mutasi, 'legacy'::text AS sumber_data
+        FROM riwayat_mutasi l WHERE l.id_pegawai=$1 AND NOT EXISTS (
+          SELECT 1 FROM riwayat_mutasi_personel d
+          WHERE d.id_pegawai=l.id_pegawai AND d.id_unit_lama IS NOT DISTINCT FROM l.id_unit_lama
+            AND d.id_unit_baru=l.id_unit_baru AND d.nomor_sk IS NOT DISTINCT FROM l.nomor_sk
+            AND d.tanggal_sk IS NOT DISTINCT FROM l.tanggal_sk AND d.tmt_mutasi=l.tmt_mutasi
+        )
+      )
+      SELECT m.id_mutasi, m.id_pegawai, m.id_unit_lama, old_unit.nama_unit AS nama_unit_lama, m.id_unit_baru, new_unit.nama_unit AS nama_unit_baru,
+             m.nomor_sk, m.tanggal_sk, m.tmt_mutasi, m.sumber_data
+      FROM mutation_source m LEFT JOIN unit_kerja old_unit ON old_unit.id_unit=m.id_unit_lama LEFT JOIN unit_kerja new_unit ON new_unit.id_unit=m.id_unit_baru
+      ORDER BY m.tmt_mutasi ASC, m.id_mutasi ASC`, [req.params.id]);
+    return res.json({ data: { personel: person.rows[0], riwayat_jabatan: history.rows, pendidikan: education.rows, diklat: training.rows, riwayat_mutasi: mutation.rows } });
   } catch (error) { return next(error); }
 });
 
@@ -633,7 +692,19 @@ router.get('/personel/:id/profile', authenticate, async (req, res, next) => {
 router.get('/personel/:id/pendidikan', authenticate, async (req, res, next) => {
   try {
     if (!(await assertPersonnelAccess(req.user, req.params.id))) return res.status(403).json({ error: 'Personel di luar scope Anda.' });
-    const result = await query('SELECT * FROM riwayat_pendidikan_personel WHERE id_pegawai=$1 ORDER BY tahun_lulus DESC NULLS LAST, id_pendidikan DESC', [req.params.id]);
+    const result = await query(`SELECT -l.id_pendidikan AS id_pendidikan, l.id_pegawai, l.jenjang, l.institusi, l.jurusan, l.tahun_lulus,
+        NULL::text AS nomor_ijazah, NULL::text AS keterangan, NULL::timestamptz AS created_at, NULL::timestamptz AS updated_at,
+        'legacy'::text AS sumber_data, FALSE AS dapat_diedit
+      FROM riwayat_pendidikan l WHERE l.id_pegawai=$1
+        AND NOT EXISTS (SELECT 1 FROM riwayat_pendidikan_personel d
+          WHERE d.id_pegawai=l.id_pegawai AND UPPER(TRIM(d.jenjang))=UPPER(TRIM(l.jenjang))
+            AND d.institusi IS NOT DISTINCT FROM l.institusi AND d.jurusan IS NOT DISTINCT FROM l.jurusan
+            AND d.tahun_lulus IS NOT DISTINCT FROM l.tahun_lulus)
+      UNION ALL
+      SELECT id_pendidikan, id_pegawai, jenjang, institusi, jurusan, tahun_lulus, nomor_ijazah, keterangan,
+        created_at, updated_at, 'domain'::text AS sumber_data, TRUE AS dapat_diedit
+      FROM riwayat_pendidikan_personel WHERE id_pegawai=$1
+      ORDER BY tahun_lulus DESC NULLS LAST, id_pendidikan DESC`, [req.params.id]);
     return res.json({ data: result.rows });
   } catch (error) { return next(error); }
 });
@@ -645,6 +716,7 @@ router.post('/personel/:id/pendidikan', authenticate, async (req, res, next) => 
     const { jenjang, institusi, jurusan, tahun_lulus, nomor_ijazah, keterangan } = parsed.data;
     const result = await query(`INSERT INTO riwayat_pendidikan_personel (id_pegawai,jenjang,institusi,jurusan,tahun_lulus,nomor_ijazah,keterangan,created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [req.params.id, jenjang, institusi, jurusan || null, tahun_lulus || null, nomor_ijazah || null, keterangan || null, req.user.id_user]);
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'CREATE', 'riwayat_pendidikan_personel', result.rows[0].id_pendidikan, { id_pegawai: req.params.id });
     return res.status(201).json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -658,6 +730,7 @@ router.put('/personel/:id/pendidikan/:educationId', authenticate, async (req, re
     const result = await query(`UPDATE riwayat_pendidikan_personel SET jenjang=$1,institusi=$2,jurusan=$3,tahun_lulus=$4,nomor_ijazah=$5,keterangan=$6,updated_by=$7,updated_at=NOW()
       WHERE id_pendidikan=$8 AND id_pegawai=$9 RETURNING *`, [jenjang, institusi, jurusan || null, tahun_lulus || null, nomor_ijazah || null, keterangan || null, req.user.id_user, req.params.educationId, req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ error: 'Riwayat pendidikan tidak ditemukan.' });
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'UPDATE', 'riwayat_pendidikan_personel', req.params.educationId, { id_pegawai: req.params.id });
     return res.json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -668,6 +741,7 @@ router.delete('/personel/:id/pendidikan/:educationId', authenticate, async (req,
     if (!(await assertPersonnelAccess(req.user, req.params.id))) return res.status(403).json({ error: 'Personel di luar scope Anda.' });
     const result = await query('DELETE FROM riwayat_pendidikan_personel WHERE id_pendidikan=$1 AND id_pegawai=$2', [req.params.educationId, req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Riwayat pendidikan tidak ditemukan.' });
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'DELETE', 'riwayat_pendidikan_personel', req.params.educationId, { id_pegawai: req.params.id });
     return res.status(204).end();
   } catch (error) { return next(error); }
@@ -677,7 +751,20 @@ router.delete('/personel/:id/pendidikan/:educationId', authenticate, async (req,
 router.get('/personel/:id/diklat', authenticate, async (req, res, next) => {
   try {
     if (!(await assertPersonnelAccess(req.user, req.params.id))) return res.status(403).json({ error: 'Personel di luar scope Anda.' });
-    const result = await query('SELECT * FROM riwayat_diklat_personel WHERE id_pegawai=$1 ORDER BY tanggal_mulai DESC NULLS LAST, id_diklat DESC', [req.params.id]);
+    const result = await query(`SELECT -l.id_riwayat_diklat AS id_diklat, l.id_pegawai, d.nama_diklat,
+        NULL::text AS jenis_diklat, d.penyelenggara, l.tanggal_mulai, l.tanggal_selesai, d.jam_pelajaran, l.nilai,
+        NULL::text AS nomor_sertifikat, NULL::text AS keterangan, NULL::timestamptz AS created_at, NULL::timestamptz AS updated_at,
+        'legacy'::text AS sumber_data, FALSE AS dapat_diedit
+      FROM riwayat_diklat l JOIN diklat d ON d.id_diklat=l.id_diklat WHERE l.id_pegawai=$1
+        AND NOT EXISTS (SELECT 1 FROM riwayat_diklat_personel p
+          WHERE p.id_pegawai=l.id_pegawai AND p.nama_diklat IS NOT DISTINCT FROM d.nama_diklat
+            AND p.penyelenggara IS NOT DISTINCT FROM d.penyelenggara AND p.tanggal_mulai IS NOT DISTINCT FROM l.tanggal_mulai
+            AND p.tanggal_selesai IS NOT DISTINCT FROM l.tanggal_selesai AND p.nilai IS NOT DISTINCT FROM l.nilai)
+      UNION ALL
+      SELECT id_diklat, id_pegawai, nama_diklat, jenis_diklat, penyelenggara, tanggal_mulai, tanggal_selesai,
+        jam_pelajaran, nilai, nomor_sertifikat, keterangan, created_at, updated_at, 'domain'::text AS sumber_data, TRUE AS dapat_diedit
+      FROM riwayat_diklat_personel WHERE id_pegawai=$1
+      ORDER BY tanggal_mulai DESC NULLS LAST, id_diklat DESC`, [req.params.id]);
     return res.json({ data: result.rows });
   } catch (error) { return next(error); }
 });
@@ -689,6 +776,7 @@ router.post('/personel/:id/diklat', authenticate, async (req, res, next) => {
     const { nama_diklat, jenis_diklat, penyelenggara, tanggal_mulai, tanggal_selesai, jam_pelajaran, nilai, nomor_sertifikat, keterangan } = parsed.data;
     const result = await query(`INSERT INTO riwayat_diklat_personel (id_pegawai,nama_diklat,jenis_diklat,penyelenggara,tanggal_mulai,tanggal_selesai,jam_pelajaran,nilai,nomor_sertifikat,keterangan,created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`, [req.params.id, nama_diklat, jenis_diklat || null, penyelenggara || null, tanggal_mulai || null, tanggal_selesai || null, jam_pelajaran || null, nilai ?? null, nomor_sertifikat || null, keterangan || null, req.user.id_user]);
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'CREATE', 'riwayat_diklat_personel', result.rows[0].id_diklat, { id_pegawai: req.params.id });
     return res.status(201).json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -702,6 +790,7 @@ router.put('/personel/:id/diklat/:trainingId', authenticate, async (req, res, ne
     const result = await query(`UPDATE riwayat_diklat_personel SET nama_diklat=$1,jenis_diklat=$2,penyelenggara=$3,tanggal_mulai=$4,tanggal_selesai=$5,jam_pelajaran=$6,nilai=$7,nomor_sertifikat=$8,keterangan=$9,updated_by=$10,updated_at=NOW()
       WHERE id_diklat=$11 AND id_pegawai=$12 RETURNING *`, [nama_diklat, jenis_diklat || null, penyelenggara || null, tanggal_mulai || null, tanggal_selesai || null, jam_pelajaran || null, nilai ?? null, nomor_sertifikat || null, keterangan || null, req.user.id_user, req.params.trainingId, req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ error: 'Riwayat diklat tidak ditemukan.' });
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'UPDATE', 'riwayat_diklat_personel', req.params.trainingId, { id_pegawai: req.params.id });
     return res.json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -712,6 +801,7 @@ router.delete('/personel/:id/diklat/:trainingId', authenticate, async (req, res,
     if (!(await assertPersonnelAccess(req.user, req.params.id))) return res.status(403).json({ error: 'Personel di luar scope Anda.' });
     const result = await query('DELETE FROM riwayat_diklat_personel WHERE id_diklat=$1 AND id_pegawai=$2', [req.params.trainingId, req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Riwayat diklat tidak ditemukan.' });
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'DELETE', 'riwayat_diklat_personel', req.params.trainingId, { id_pegawai: req.params.id });
     return res.status(204).end();
   } catch (error) { return next(error); }
@@ -780,6 +870,11 @@ router.post('/personel', authenticate, async (req, res, next) => {
     if (!allowedJob.rows[0]) return res.status(400).json({ error: 'Jabatan tidak sesuai dengan nomenklatur Unit Kerja yang dipilih.' });
     const result = await query(`INSERT INTO pegawai (nip,jenis_personel,jenis_identitas,nik,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,tanggal_masuk,id_unit,id_jabatan,id_golongan,pangkat,nama_polsek,id_atasan,status_pegawai,batas_usia_pensiun,id_satker)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`, [nip,jenis_personel,jenis_identitas,nik,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,tanggal_masuk,id_unit,id_jabatan,id_golongan,pangkat,nama_polsek,id_atasan,status_pegawai,batas_usia_pensiun,id_satker]);
+    await query(`INSERT INTO riwayat_jabatan (id_pegawai,id_jabatan,id_satker,id_unit,id_status_jabatan,tanggal_mulai,keterangan)
+      SELECT $1,$2,$3,$4,st.id_status_jabatan,COALESCE($5::date,CURRENT_DATE),'Jabatan aktif awal saat personel dibuat.'
+      FROM status_jabatan st WHERE st.kode_status='MIGRASI_AKTIF'
+      ON CONFLICT DO NOTHING`, [result.rows[0].id_pegawai, id_jabatan, id_satker, id_unit, tanggal_masuk]);
+    await invalidateKeys(['master:status-personel']);
     await writeAudit(req, 'CREATE', 'personel', result.rows[0].id_pegawai, { after: result.rows[0] });
     return res.status(201).json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -801,8 +896,29 @@ router.put('/personel/:id', authenticate, async (req, res, next) => {
       const currentJob = await query('SELECT id_jabatan FROM pegawai WHERE id_pegawai=$1', [req.params.id]);
       if (Number(currentJob.rows[0]?.id_jabatan) !== Number(id_jabatan)) return res.status(400).json({ error: 'Jabatan tidak sesuai dengan nomenklatur Unit Kerja yang dipilih.' });
     }
-    const result = await query(`UPDATE pegawai SET nip=$1,jenis_personel=$2,jenis_identitas=$3,nik=$4,nama=$5,jenis_kelamin=$6,tempat_lahir=$7,tanggal_lahir=$8,tanggal_masuk=$9,id_unit=$10,id_jabatan=$11,id_golongan=$12,pangkat=$13,nama_polsek=$14,id_atasan=$15,status_pegawai=$16,batas_usia_pensiun=$17,id_satker=$18 WHERE id_pegawai=$19 RETURNING *`, [nip,jenis_personel,jenis_identitas,nik,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,tanggal_masuk,id_unit,id_jabatan,id_golongan,pangkat,nama_polsek,id_atasan,status_pegawai,batas_usia_pensiun,id_satker,req.params.id]);
+    const { result, changedPosition } = await withRedisLock(`personel:${req.params.id}`, () => withTransaction(async (client) => {
+      // Mengunci personel agar perubahan bersamaan tidak membuat dua histori aktif.
+      const previous = await client.query('SELECT id_jabatan, id_unit, id_satker FROM pegawai WHERE id_pegawai=$1 FOR UPDATE', [req.params.id]);
+      if (!previous.rows[0]) return { result: { rows: [] }, changedPosition: false };
+      const positionChanged = Number(previous.rows[0].id_jabatan) !== Number(id_jabatan)
+        || Number(previous.rows[0].id_unit) !== Number(id_unit)
+        || Number(previous.rows[0].id_satker) !== Number(id_satker);
+      const updated = await client.query(`UPDATE pegawai SET nip=$1,jenis_personel=$2,jenis_identitas=$3,nik=$4,nama=$5,jenis_kelamin=$6,tempat_lahir=$7,tanggal_lahir=$8,tanggal_masuk=$9,id_unit=$10,id_jabatan=$11,id_golongan=$12,pangkat=$13,nama_polsek=$14,id_atasan=$15,status_pegawai=$16,batas_usia_pensiun=$17,id_satker=$18 WHERE id_pegawai=$19 RETURNING *`, [nip,jenis_personel,jenis_identitas,nik,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,tanggal_masuk,id_unit,id_jabatan,id_golongan,pangkat,nama_polsek,id_atasan,status_pegawai,batas_usia_pensiun,id_satker,req.params.id]);
+      if (positionChanged) {
+        await client.query(`UPDATE riwayat_jabatan r
+          SET tanggal_selesai=GREATEST(COALESCE(r.tanggal_mulai,CURRENT_DATE),CURRENT_DATE),
+              id_status_jabatan=COALESCE(nonaktif.id_status_jabatan, r.id_status_jabatan),
+              updated_at=NOW()
+          FROM (SELECT id_status_jabatan FROM status_jabatan WHERE kode_status='MIGRASI_NONAKTIF' LIMIT 1) nonaktif
+          WHERE r.id_pegawai=$1 AND r.tanggal_selesai IS NULL`, [req.params.id]);
+        await client.query(`INSERT INTO riwayat_jabatan (id_pegawai,id_jabatan,id_satker,id_unit,id_status_jabatan,tanggal_mulai,keterangan)
+          SELECT $1,$2,$3,$4,st.id_status_jabatan,CURRENT_DATE,'Perubahan jabatan/unit/Satker dari data personel.'
+          FROM status_jabatan st WHERE st.kode_status='MIGRASI_AKTIF'`, [req.params.id, id_jabatan, id_satker, id_unit]);
+      }
+      return { result: updated, changedPosition: positionChanged };
+    }));
     if (!result.rows[0]) return res.status(404).json({ error: 'Personel tidak ditemukan.' });
+    await invalidateKeys(['master:status-personel', `profile:${req.params.id}`]);
     await writeAudit(req, 'UPDATE', 'personel', req.params.id, { after: result.rows[0] });
     return res.json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -815,6 +931,7 @@ router.delete('/personel/:id', authenticate, async (req, res, next) => {
     if (!(await assertPersonnelAccess(req.user, req.params.id))) return res.status(403).json({ error: 'Personel di luar scope Anda.' });
     const result = await query('DELETE FROM pegawai WHERE id_pegawai = $1', [req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Personel tidak ditemukan.' });
+    await invalidateKeys(['master:status-personel', `profile:${req.params.id}`]);
     await writeAudit(req, 'DELETE', 'personel', req.params.id);
     return res.status(204).end();
   } catch (error) { return next(error); }
@@ -854,6 +971,7 @@ router.post('/personel/:id/riwayat-jabatan', authenticate, async (req, res, next
     if (!allowedJob.rowCount) return res.status(400).json({ error: 'Jabatan tidak tersedia pada Satker yang dipilih.' });
     const result = await query(`INSERT INTO riwayat_jabatan (id_pegawai,id_jabatan,id_satker,id_unit,id_level_jabatan,id_status_jabatan,tanggal_mulai,tanggal_selesai,keterangan,created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [req.params.id, id_jabatan, id_satker, id_unit, id_level_jabatan, id_status_jabatan, tanggal_mulai, tanggal_selesai, keterangan, req.user.id_user]);
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'CREATE', 'riwayat_jabatan', result.rows[0].id_riwayat_jabatan, { id_pegawai: req.params.id, after: result.rows[0] });
     return res.status(201).json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -882,6 +1000,7 @@ router.put('/personel/:id/riwayat-jabatan/:historyId', authenticate, async (req,
     const result = await query(`UPDATE riwayat_jabatan SET id_jabatan=$1,id_satker=$2,id_unit=$3,id_level_jabatan=$4,id_status_jabatan=$5,tanggal_mulai=$6,tanggal_selesai=$7,keterangan=$8,updated_by=$9,updated_at=NOW()
       WHERE id_riwayat_jabatan=$10 AND id_pegawai=$11 RETURNING *`, [id_jabatan, id_satker, id_unit, id_level_jabatan, id_status_jabatan, tanggal_mulai, tanggal_selesai, keterangan, req.user.id_user, req.params.historyId, req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ error: 'Riwayat jabatan tidak ditemukan.' });
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'UPDATE', 'riwayat_jabatan', req.params.historyId, { id_pegawai: req.params.id, after: result.rows[0] });
     return res.json({ data: result.rows[0] });
   } catch (error) { return next(error); }
@@ -894,6 +1013,7 @@ router.delete('/personel/:id/riwayat-jabatan/:historyId', authenticate, async (r
     if (!(await assertPersonnelAccess(req.user, req.params.id))) return res.status(403).json({ error: 'Personel di luar scope Anda.' });
     const result = await query('DELETE FROM riwayat_jabatan WHERE id_riwayat_jabatan = $1 AND id_pegawai = $2', [req.params.historyId, req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Riwayat jabatan tidak ditemukan.' });
+    await invalidateKeys([`profile:${req.params.id}`]);
     await writeAudit(req, 'DELETE', 'riwayat_jabatan', req.params.historyId, { id_pegawai: req.params.id });
     return res.status(204).end();
   } catch (error) { return next(error); }

@@ -61,7 +61,7 @@ Frontend tidak menyimpan secret. Keputusan permission tetap dilakukan backend wa
 
 ## Tech stack
 
-Node.js 20+, Express, PostgreSQL, `pg`, JSON Web Token, bcryptjs, Zod, dotenv, dan express-rate-limit.
+Node.js 20+, Express, PostgreSQL, Redis, `pg`, `redis`, `rate-limit-redis`, JSON Web Token, bcryptjs, Zod, dotenv, dan express-rate-limit.
 
 ## Instalasi
 
@@ -84,6 +84,10 @@ PORT=3000
 DATABASE_URL=postgresql://username:password@localhost:5432/backend_sdm
 JWT_SECRET=ganti-dengan-secret-acak-minimal-32-karakter
 JWT_EXPIRES_IN=1h
+REDIS_ENABLED=false
+REDIS_URL=redis://:password@127.0.0.1:6379/0
+REDIS_KEY_PREFIX=merit:
+REDIS_DEFAULT_TTL_SECONDS=60
 NODE_ENV=development
 # Development lokal boleh memakai console; production wajib memakai smtp.
 EMAIL_DELIVERY=console
@@ -100,6 +104,7 @@ OTP_RESEND_COOLDOWN_SECONDS=60
 ```
 
 `JWT_SECRET` hanya digunakan server dan tidak boleh dimasukkan ke repository atau frontend.
+Redis bersifat opsional. Saat aktif, Redis menyimpan cache, lock singkat, dan counter rate limit lintas proses PM2. Saat dinonaktifkan atau tidak tersedia, cache/lock kembali aman ke perilaku fallback dan rate limit memakai store memori lokal; PostgreSQL tetap menjadi sumber data utama. Endpoint `/health` menampilkan jenis store rate limit dan metrik cache dasar untuk monitoring.
 
 ### Menyiapkan database dan menjalankan server
 
@@ -173,7 +178,7 @@ riwayat; backend menolak Satker lain walaupun payload dikirim langsung ke API.
 
 Riwayat jabatan mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal berakhir, nivelering, status, dan keterangan. Validasi mencegah format payload yang salah; constraint database mencegah tanggal terbalik dan lebih dari satu histori aktif untuk personel yang sama.
 
-Migration `db/migrations/017_personnel_education_training.sql` menambahkan tabel domain `riwayat_pendidikan_personel` dan `riwayat_diklat_personel`. Profil personel mengembalikan kedua koleksi tersebut; seluruh operasi mengikuti pemeriksaan role/scope dan tercatat pada audit log. Fixture aktif demo tersedia pada `db/seed/active_education_training_fixture.sql`.
+Migration `db/migrations/017_personnel_education_training.sql` menambahkan tabel domain `riwayat_pendidikan_personel` dan `riwayat_diklat_personel`. Migration `038_backfill_legacy_personnel_history.sql` mengisi domain secara idempoten dari data legacy dan menambahkan `riwayat_mutasi_personel`; sumber legacy tidak dihapus atau diubah. Migration `039_backfill_and_track_current_position.sql` membentuk histori awal dari jabatan aktif seluruh personel yang memiliki referensi jabatan/Satker. Migration `040_position_history_status.sql` menambahkan status aktif/nonaktif untuk histori jabatan. Perubahan jabatan, unit, atau Satker berikutnya dicatat otomatis oleh endpoint pembaruan personel dalam transaksi; histori lama ditutup dan diberi status nonaktif sebelum histori baru aktif dibuat. Profil personel mengembalikan data domain dan memakai legacy sebagai fallback tanpa duplikasi.
 
 Data legacy `riwayat_pendidikan`, `riwayat_diklat`, dan `riwayat_mutasi` tetap
 dipertahankan. Endpoint profil dan CRUD memakai tabel domain personel baru,
@@ -183,7 +188,7 @@ untuk agregasi analitik tanpa mengubah data sumber.
 ## Struktur database saat ini
 
 Database ini memakai schema PostgreSQL `public`. `db/schema.sql` membuat fondasi
-legacy; migration `002` sampai `037` menambahkan domain Merit System secara
+legacy; migration `002` sampai `040` menambahkan domain Merit System secara
 additive. Migration tidak dimaksudkan untuk dijalankan acak karena beberapa
 foreign key, role, dan mapping bergantung pada migration sebelumnya.
 
@@ -274,7 +279,8 @@ psql "$DATABASE_URL" -X -c "SELECT conname, contype FROM pg_constraint WHERE con
 Catatan audit: instruksi demo lama hanya mencantumkan migration sampai `015`,
 sedangkan tabel merit, pendidikan/diklat domain, mapping jabatan-unit, dan
 perubahan role operator Polres dibuat oleh migration `016`–`036`; privilege
-tabel runtime dilengkapi oleh migration `037`. Untuk menguji
+tabel runtime dilengkapi oleh migration `037`, sedangkan backfill riwayat legacy
+dilakukan oleh migration `038`, histori jabatan aktif dibentuk oleh migration `039`, dan status histori aktif/nonaktif disiapkan oleh migration `040`. Untuk menguji
 fitur terbaru, seluruh migration harus diterapkan berurutan.
 
 Sebelum menjalankan migration, pastikan `DATABASE_URL` benar-benar menunjuk database staging. Verifikasi tanpa menampilkan password:
