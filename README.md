@@ -289,7 +289,7 @@ Catatan audit: instruksi demo lama hanya mencantumkan migration sampai `015`,
 sedangkan tabel merit, pendidikan/diklat domain, mapping jabatan-unit, dan
 perubahan role operator Polres dibuat oleh migration `016`–`036`; privilege
 tabel runtime dilengkapi oleh migration `037`, sedangkan backfill riwayat legacy
-dilakukan oleh migration `038`, histori jabatan aktif dibentuk oleh migration `039`, status histori aktif/nonaktif disiapkan oleh migration `040`, dan histori deployment dicatat oleh migration `041`. Untuk menguji
+dilakukan oleh migration `038`, histori jabatan aktif dibentuk oleh migration `039`, status histori aktif/nonaktif disiapkan oleh migration `040`, histori deployment dicatat oleh migration `041`, dan status pensiun otomatis diperbarui oleh migration `043`. Untuk menguji
 fitur terbaru, seluruh migration harus diterapkan berurutan.
 
 Sebelum menjalankan migration, pastikan `DATABASE_URL` benar-benar menunjuk database staging. Verifikasi tanpa menampilkan password:
