@@ -157,12 +157,63 @@ export const trainingSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['tanggal_selesai'], message: 'Tanggal selesai tidak boleh sebelum tanggal mulai.' });
   }
 });
+const VALIDATION_FIELD_LABELS = {
+  nip: 'NRP/NIP',
+  jenis_personel: 'jenis personel',
+  jenis_identitas: 'jenis identitas',
+  nik: 'NIK',
+  nama: 'nama lengkap',
+  jenis_kelamin: 'jenis kelamin',
+  tanggal_lahir: 'tanggal lahir',
+  tanggal_masuk: 'tanggal masuk',
+  id_satker: 'Satker',
+  id_unit: 'unit kerja',
+  id_jabatan: 'jabatan',
+  id_golongan: 'golongan',
+  pangkat: 'pangkat',
+  nama_polsek: 'nama Polsek',
+  id_atasan: 'atasan',
+  status_pegawai: 'status personel',
+  batas_usia_pensiun: 'batas usia pensiun',
+};
+
+function readableValidationMessage(issue, label) {
+  if (issue.code === 'invalid_type') {
+    if (issue.received === 'undefined') return `${label} wajib diisi.`;
+    if (issue.received === 'null') return `${label} tidak boleh kosong.`;
+    if (issue.expected === 'number') return `${label} harus berupa angka.`;
+    if (issue.expected === 'string') return `${label} harus berupa teks.`;
+    if (issue.expected === 'array') return `${label} harus berupa daftar.`;
+  }
+  if (issue.code === 'invalid_enum_value') return `${label} memiliki pilihan yang tidak valid.`;
+  if (issue.code === 'too_small') {
+    const minimum = issue.minimum;
+    if (issue.type === 'string') return `${label} minimal ${minimum} karakter.`;
+    if (issue.type === 'number') return `${label} minimal bernilai ${minimum}.`;
+    if (issue.type === 'array') return `${label} minimal berisi ${minimum} pilihan.`;
+  }
+  if (issue.code === 'too_big') {
+    const maximum = issue.maximum;
+    if (issue.type === 'string') return `${label} maksimal ${maximum} karakter.`;
+    if (issue.type === 'number') return `${label} maksimal bernilai ${maximum}.`;
+    if (issue.type === 'array') return `${label} maksimal berisi ${maximum} pilihan.`;
+  }
+  if (issue.code === 'invalid_string' && issue.validation === 'email') return `${label} harus berupa alamat email yang valid.`;
+  return issue.message;
+}
+
 // Menjalankan schema dan mengubah error Zod menjadi format API yang mudah dibaca.
 export function validate(schema, input) {
   // safeParse tidak melempar exception sehingga aman dipakai di route.
   const result = schema.safeParse(input);
   // Mengembalikan data yang sudah tervalidasi jika berhasil.
   if (result.success) return { data: result.data };
-  // Mengembalikan field dan pesan untuk setiap error validasi.
-  return { error: result.error.issues.map((issue) => ({ field: issue.path.join('.'), message: issue.message })) };
+  // Mengembalikan field dan alasan yang dapat langsung ditampilkan pengguna.
+  return {
+    error: result.error.issues.map((issue) => {
+      const field = issue.path.join('.') || 'data';
+      const label = VALIDATION_FIELD_LABELS[field] || field;
+      return { field, label, message: readableValidationMessage(issue, label) };
+    }),
+  };
 }
