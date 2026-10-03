@@ -112,11 +112,13 @@ Redis bersifat opsional. Saat aktif, Redis menyimpan cache, lock singkat, dan co
 npm install
 createdb backend_sdm
 psql "$DATABASE_URL" -f db/schema.sql
-# Untuk staging baru/yang sudah berisi schema dasar, jalankan seluruh migration
-# secara numerik. Migration bersifat additive dan harus dijalankan berurutan.
-for migration in db/migrations/*.sql; do
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
-done
+# Untuk database baru, gunakan runner agar histori dan checksum tercatat.
+npm run migrate
+# Untuk database lama yang sudah tervalidasi sampai migration terakhir,
+# catat baseline tanpa menjalankan ulang migration lama.
+npm run migrate:baseline
+# Periksa migration yang pending atau checksum yang berubah.
+npm run migrate:status
 npm run dev
 ```
 
@@ -188,9 +190,14 @@ untuk agregasi analitik tanpa mengubah data sumber.
 ## Struktur database saat ini
 
 Database ini memakai schema PostgreSQL `public`. `db/schema.sql` membuat fondasi
-legacy; migration `002` sampai `040` menambahkan domain Merit System secara
+legacy; migration `002` sampai `041` menambahkan domain Merit System secara
 additive. Migration tidak dimaksudkan untuk dijalankan acak karena beberapa
 foreign key, role, dan mapping bergantung pada migration sebelumnya.
+
+Tabel `schema_migrations` menyimpan nama file, checksum SHA-256, waktu,
+executor, durasi, dan metode penerapan (`runner` atau `baseline`). Runner
+mengunci proses migration dengan advisory lock, melewati migration yang sudah
+tercatat, dan berhenti jika checksum file berubah.
 
 ### Peta tabel dan relasi
 
@@ -280,7 +287,7 @@ Catatan audit: instruksi demo lama hanya mencantumkan migration sampai `015`,
 sedangkan tabel merit, pendidikan/diklat domain, mapping jabatan-unit, dan
 perubahan role operator Polres dibuat oleh migration `016`–`036`; privilege
 tabel runtime dilengkapi oleh migration `037`, sedangkan backfill riwayat legacy
-dilakukan oleh migration `038`, histori jabatan aktif dibentuk oleh migration `039`, dan status histori aktif/nonaktif disiapkan oleh migration `040`. Untuk menguji
+dilakukan oleh migration `038`, histori jabatan aktif dibentuk oleh migration `039`, status histori aktif/nonaktif disiapkan oleh migration `040`, dan histori deployment dicatat oleh migration `041`. Untuk menguji
 fitur terbaru, seluruh migration harus diterapkan berurutan.
 
 Sebelum menjalankan migration, pastikan `DATABASE_URL` benar-benar menunjuk database staging. Verifikasi tanpa menampilkan password:

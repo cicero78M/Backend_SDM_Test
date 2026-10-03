@@ -8,7 +8,10 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --test",
-    "test:e2e:demo": "node scripts/e2e-demo.mjs"
+    "test:e2e:demo": "node scripts/e2e-demo.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "migrate:status": "node scripts/migrate.mjs --status",
+    "migrate:baseline": "node scripts/migrate.mjs --baseline"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
