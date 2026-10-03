@@ -6,7 +6,7 @@ import { RedisStore } from 'rate-limit-redis';
 // Mengimpor loader environment variable.
 import dotenv from 'dotenv';
 // Mengimpor seluruh route API.
-import { router } from './routes.js';
+import { router } from './routes/index.js';
 import { getRedisClient, redisStatus } from './cache.js';
 // Memuat konfigurasi sebelum server dibuat.
 dotenv.config();
