@@ -28,13 +28,17 @@ export function registerDashboardRoutes(router) {
         query(`SELECT COUNT(*)::int AS total FROM pegawai p ${peopleWhere}`, params.slice(0, isAdministrator(req.user) ? 0 : 1)),
         query(`SELECT COALESCE(NULLIF(TRIM(status_pegawai),''),'TIDAK DIISI') AS label, COUNT(*)::int AS value FROM pegawai p ${peopleWhere} GROUP BY COALESCE(NULLIF(TRIM(status_pegawai),''),'TIDAK DIISI') ORDER BY value DESC, label ASC`, params.slice(0, isAdministrator(req.user) ? 0 : 1)),
         query(`WITH education_records AS (
-            SELECT r.id_pegawai, r.jenjang, r.tahun_lulus, r.id_pendidikan, 0 AS source_priority FROM riwayat_pendidikan r
+            SELECT r.id_pegawai, r.jenjang, r.tahun_lulus, r.id_pendidikan,
+              CASE UPPER(TRIM(r.jenjang)) WHEN 'SD' THEN 1 WHEN 'SMP' THEN 2 WHEN 'SMA' THEN 3 WHEN 'D1' THEN 4 WHEN 'D2' THEN 5 WHEN 'D3' THEN 6 WHEN 'D4' THEN 7 WHEN 'S1' THEN 7 WHEN 'S2' THEN 8 WHEN 'S3' THEN 9 ELSE 0 END AS jenjang_rank,
+              0 AS source_priority FROM riwayat_pendidikan r
             UNION ALL
-            SELECT d.id_pegawai, d.jenjang, d.tahun_lulus, d.id_pendidikan, 1 AS source_priority FROM riwayat_pendidikan_personel d
+            SELECT d.id_pegawai, d.jenjang, d.tahun_lulus, d.id_pendidikan,
+              CASE UPPER(TRIM(d.jenjang)) WHEN 'SD' THEN 1 WHEN 'SMP' THEN 2 WHEN 'SMA' THEN 3 WHEN 'D1' THEN 4 WHEN 'D2' THEN 5 WHEN 'D3' THEN 6 WHEN 'D4' THEN 7 WHEN 'S1' THEN 7 WHEN 'S2' THEN 8 WHEN 'S3' THEN 9 ELSE 0 END AS jenjang_rank,
+              1 AS source_priority FROM riwayat_pendidikan_personel d
           ), latest_education AS (
             SELECT DISTINCT ON (id_pegawai) id_pegawai, jenjang
             FROM education_records
-            ORDER BY id_pegawai, tahun_lulus DESC NULLS LAST, source_priority DESC, id_pendidikan DESC
+            ORDER BY id_pegawai, jenjang_rank DESC, tahun_lulus DESC NULLS LAST, source_priority DESC, id_pendidikan DESC
           )
           SELECT COALESCE(NULLIF(TRIM(e.jenjang),''),'Tidak diisi') AS label, COUNT(*)::int AS value
           FROM pegawai p LEFT JOIN latest_education e ON e.id_pegawai=p.id_pegawai
