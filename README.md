@@ -128,6 +128,8 @@ Health check: `GET http://localhost:3000/health`.
 
 Semua endpoint selain register/login/verify-email/resend-otp memerlukan header `Authorization: Bearer <token>`.
 
+`GET /api/v1/audit-log` menampilkan log input, update, hapus, dan baca data personel. Admin utama dapat melihat seluruh log; role lain hanya menerima log personel dan riwayat yang berada dalam scope Satker-nya. Filter yang tersedia: `page`, `limit`, `action`, `resource`, `search`, `from`, dan `to`.
+
 ### Authentication
 
 - `POST /api/v1/auth/register` — registrasi user baru dengan email; role awal selalu `viewer` dan OTP dikirim ke email.

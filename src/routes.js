@@ -229,6 +229,62 @@ router.post('/auth/login', async (req, res, next) => {
 });
 // Mengembalikan profil user dari token yang sedang aktif.
 router.get('/auth/me', authenticate, (req, res) => res.json({ user: req.user }));
+
+// Log perubahan data yang terlihat sesuai role dan scope organisasi user.
+router.get('/audit-log', authenticate, async (req, res, next) => {
+  try {
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+    const offset = (page - 1) * limit;
+    const params = [];
+    const addParam = value => { params.push(value); return `$${params.length}`; };
+    const conditions = [];
+    const targetPersonnel = `(CASE
+      WHEN a.resource = 'personel' AND a.resource_id ~ '^[0-9]+$' THEN a.resource_id::integer
+      WHEN a.metadata->>'id_pegawai' ~ '^[0-9]+$' THEN (a.metadata->>'id_pegawai')::integer
+      ELSE NULL
+    END)`;
+
+    if (req.query.action && ['CREATE', 'READ', 'UPDATE', 'DELETE'].includes(String(req.query.action).toUpperCase())) {
+      conditions.push(`a.action = ${addParam(String(req.query.action).toUpperCase())}`);
+    }
+    if (req.query.resource) {
+      const resource = String(req.query.resource).trim().slice(0, 80);
+      if (resource) conditions.push(`a.resource = ${addParam(resource)}`);
+    }
+    if (req.query.from) conditions.push(`a.created_at >= ${addParam(String(req.query.from))}::timestamptz`);
+    if (req.query.to) conditions.push(`a.created_at < (${addParam(String(req.query.to))}::date + INTERVAL '1 day')`);
+    if (req.query.search) {
+      const search = `%${String(req.query.search).trim().slice(0, 100)}%`;
+      conditions.push(`(u.username ILIKE ${addParam(search)} OR a.resource ILIKE ${addParam(search)} OR p.nama ILIKE ${addParam(search)} OR p.nip ILIKE ${addParam(search)})`);
+    }
+
+    // Admin utama dapat membaca seluruh log. Role lain hanya melihat aksi
+    // personel dalam Satker yang menjadi scope-nya.
+    if (req.user.role !== 'admin') {
+      conditions.push(`a.resource IN ('personel', 'riwayat_jabatan', 'riwayat_pendidikan_personel', 'riwayat_diklat_personel', 'riwayat_mutasi_personel', 'merit_assessment')`);
+      const scopeUser = addParam(req.user.id_user);
+      conditions.push(`EXISTS (SELECT 1 FROM user_scope scoped WHERE scoped.id_user = ${scopeUser} AND scoped.id_satker = p.id_satker)`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const fromSql = `audit_log a
+      LEFT JOIN users u ON u.id_user = a.id_user
+      LEFT JOIN pegawai p ON p.id_pegawai = ${targetPersonnel}
+      LEFT JOIN satker s ON s.id_satker = p.id_satker`;
+    const count = await query(`SELECT COUNT(*)::int AS total FROM ${fromSql} ${where}`, params);
+    const dataParams = [...params, limit, offset];
+    const data = await query(`SELECT a.id_audit, a.action, a.resource, a.resource_id, a.request_id, a.metadata, a.created_at,
+        u.id_user AS actor_id, u.username AS actor_username, p.id_pegawai AS target_id, p.nama AS target_nama,
+        p.nip AS target_nip, s.nama_satker AS target_satker
+      FROM ${fromSql} ${where}
+      ORDER BY a.created_at DESC, a.id_audit DESC
+      LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`, dataParams);
+    await writeAudit(req, 'READ', 'audit_log', null, { filters: req.query, result_count: data.rows.length });
+    return res.json({ data: data.rows, meta: { page, limit, total: count.rows[0].total } });
+  } catch (error) { return next(error); }
+});
+
 // Mengganti password dengan verifikasi password lama.
 router.put('/auth/me/password', authenticate, async (req, res, next) => {
   try {
