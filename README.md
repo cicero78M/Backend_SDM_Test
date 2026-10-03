@@ -107,13 +107,11 @@ OTP_RESEND_COOLDOWN_SECONDS=60
 npm install
 createdb backend_sdm
 psql "$DATABASE_URL" -f db/schema.sql
-# Untuk database staging yang sudah berisi schema dasar, jalankan migration additive:
-psql "$DATABASE_URL" -f db/migrations/002_merit_system_staging.sql
-psql "$DATABASE_URL" -f db/migrations/003_grant_app_role.sql
-# Untuk database yang sudah berjalan, terapkan migration OTP secara additive:
-psql "$DATABASE_URL" -f db/migrations/018_registration_email_otp.sql
-psql "$DATABASE_URL" -f db/migrations/019_registration_satker_scope.sql
-psql "$DATABASE_URL" -f db/migrations/020_registration_identity.sql
+# Untuk staging baru/yang sudah berisi schema dasar, jalankan seluruh migration
+# secara numerik. Migration bersifat additive dan harus dijalankan berurutan.
+for migration in db/migrations/*.sql; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+done
 npm run dev
 ```
 
@@ -184,17 +182,100 @@ untuk agregasi analitik tanpa mengubah data sumber.
 
 ## Struktur database saat ini
 
-Database staging yang telah diverifikasi memuat 300 baris `pegawai`, 150 baris `staging_pegawai`, 398 riwayat pendidikan, 416 riwayat diklat, dan 150 riwayat mutasi. Status validasi staging: 113 `VALID` dan 37 `TINDAK_LANJUT`.
+Database ini memakai schema PostgreSQL `public`. `db/schema.sql` membuat fondasi
+legacy; migration `002` sampai `037` menambahkan domain Merit System secara
+additive. Migration tidak dimaksudkan untuk dijalankan acak karena beberapa
+foreign key, role, dan mapping bergantung pada migration sebelumnya.
 
-`db/schema.sql` saat ini memuat:
+### Peta tabel dan relasi
 
-- `pegawai` — data dasar personel dan foreign key ke master;
-- `unit_kerja` — struktur unit kerja;
-- `jabatan` — master jabatan;
-- `golongan` — master pangkat/golongan;
-- `users` — kredensial, bcrypt hash, role, dan status aktif.
+```text
+users ───────────────< user_scope >────────────── satker
+  │                         │                     │
+  │                         └───────────────< satker_fungsi >── fungsi
+  │
+  ├──< registration_requests
+  ├──< password_reset_tokens
+  ├──< audit_log
+  └──< riwayat_jabatan (created_by / updated_by)
 
-Migration `db/migrations/002_merit_system_staging.sql` telah diterapkan pada database staging `postgres`. Migration menambahkan `riwayat_jabatan`, master fungsi/status/level jabatan, `satker`, relasi `user_scope`, `audit_log`, serta kolom validasi staging. Migration bersifat additive dan tidak menghapus data staging lama. Constraint `NOT NULL`, `CHECK`, `UNIQUE`, foreign key, index, serta transaksi menjaga konsistensi data.
+satker ───< unit_kerja ───< jabatan_unit_kerja >── jabatan
+   │             │                 │
+   │             └── parent unit   └── mapping aktif per unit
+   │
+   └──< pegawai ───< riwayat_jabatan
+          │  │  │
+          │  │  ├──< riwayat_pendidikan_personel
+          │  │  ├──< riwayat_diklat_personel
+          │  │  └──< merit_assessment >── merit_period
+          │                                      │
+          └── golongan                         └── merit_indicator
+
+staging_pegawai     # data mentah sebelum validasi/promosi
+riwayat_pendidikan  # tabel legacy analitik
+riwayat_diklat      # tabel legacy analitik
+riwayat_mutasi      # tabel legacy analitik
+```
+
+### Tabel inti dan domain
+
+| Kelompok | Tabel | Isi dan aturan utama |
+|---|---|---|
+| Master organisasi | `satker` | Hierarki Satker melalui `id_satker_induk`; tipe meliputi `SSDM`, `POLDA`, `SATKER`, `DIREKTORAT`, `SATKER_MABES`, dan `SATBRIMOB`. |
+| Master organisasi | `unit_kerja` | Unit kerja bertingkat melalui `id_unit_induk`, terkait ke Satker, memiliki kode/tipe, status aktif, dan metadata SOTK. |
+| Master personel | `golongan`, `jabatan`, `fungsi`, `level_jabatan`, `status_jabatan` | Referensi pangkat, jabatan, fungsi, nivelering, dan status penugasan. |
+| Personel | `pegawai` | Identitas, jenis personel, NRP/NIP, NIK, pangkat, unit, Satker, atasan, dan status pegawai. `id_satker` ditambahkan oleh migration `002`. |
+| Karier | `riwayat_jabatan` | Histori jabatan per personel, Satker, unit, fungsi, nivelering, status, periode, dan user perubahan. Satu record aktif per personel dijaga unique partial index. |
+| Karier | `jabatan_unit_kerja` | Mapping jabatan yang valid untuk unit tertentu; mapping aktif menjadi sumber pilihan jabatan pada form. |
+| Kualifikasi | `riwayat_pendidikan_personel`, `riwayat_diklat_personel` | Pendidikan dan diklat domain baru dengan validasi tahun, nilai, tanggal, serta audit user. |
+| Merit | `merit_period`, `merit_indicator`, `merit_assessment` | Periode penilaian, indikator berbobot, nilai/bukti personel, status verifikasi, dan unique per personel-periode-indikator. |
+| Akses | `users`, `user_scope` | Kredensial hash, role, status aktif, dan scope Satker operator. |
+| Registrasi | `registration_requests`, `password_reset_tokens` | Approval akun, verifikasi OTP, dan token reset password sekali pakai yang disimpan sebagai hash. |
+| Audit | `audit_log` | Aksi `CREATE`, `READ`, `UPDATE`, `DELETE`, resource, request ID, user, dan metadata JSONB. |
+| Staging/legacy | `staging_pegawai`, `riwayat_pendidikan`, `riwayat_diklat`, `riwayat_mutasi`, `diklat` | Sumber impor dan data lama yang dipertahankan untuk cleansing serta agregasi dashboard. |
+
+### Constraint dan index penting
+
+- Identitas `pegawai.nip` dan `pegawai.nik` unik; format, jenis personel,
+  jenis identitas, jenis kelamin, serta tanggal masuk dibatasi `CHECK`.
+- Foreign key menjaga relasi personel, Satker, unit, jabatan, histori, user,
+  dan scope. Histori domain personel menggunakan `ON DELETE CASCADE` dari
+  `pegawai`; data legacy tetap dipertahankan dengan perilaku FK default.
+- `riwayat_jabatan` memiliki check rentang tanggal dan unique partial index
+  `uq_riwayat_jabatan_aktif` untuk mencegah lebih dari satu histori aktif.
+- `user_scope` memiliki primary key gabungan `(id_user, id_satker)`.
+- `jabatan_unit_kerja` memiliki primary key gabungan dan index mapping aktif
+  per unit.
+- Index tersedia untuk pencarian nama/unit/Satker, histori per personel,
+  staging berdasarkan status validasi, kualifikasi personel, assessment merit,
+  registrasi, dan token reset.
+
+### Urutan instalasi dan audit deployment
+
+Untuk database baru yang membutuhkan seluruh domain aplikasi, jalankan schema
+dasar kemudian seluruh migration di folder ini secara numerik. Migration di
+luar folder ini bukan bagian dari database aplikasi SDM:
+
+```bash
+psql "$DATABASE_URL" -f db/schema.sql
+for migration in db/migrations/*.sql; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+done
+```
+
+Verifikasi tanpa menampilkan password:
+
+```bash
+psql "$DATABASE_URL" -X -Atc "SELECT current_database(), current_user;"
+psql "$DATABASE_URL" -X -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name;"
+psql "$DATABASE_URL" -X -c "SELECT conname, contype FROM pg_constraint WHERE connamespace='public'::regnamespace ORDER BY conname;"
+```
+
+Catatan audit: instruksi demo lama hanya mencantumkan migration sampai `015`,
+sedangkan tabel merit, pendidikan/diklat domain, mapping jabatan-unit, dan
+perubahan role operator Polres dibuat oleh migration `016`–`036`; privilege
+tabel runtime dilengkapi oleh migration `037`. Untuk menguji
+fitur terbaru, seluruh migration harus diterapkan berurutan.
 
 Sebelum menjalankan migration, pastikan `DATABASE_URL` benar-benar menunjuk database staging. Verifikasi tanpa menampilkan password:
 
@@ -240,7 +321,9 @@ Seed demo hanya untuk database terpisah:
 createdb merit_system_demo
 export DEMO_DATABASE_URL=postgresql://<user>:<password>@127.0.0.1:5432/merit_system_demo
 psql "$DEMO_DATABASE_URL" -f db/schema.sql
-for migration in db/migrations/002_merit_system_staging.sql db/migrations/003_grant_app_role.sql db/migrations/004_career_admin_controls.sql db/migrations/005_polda_directorates.sql db/migrations/006_mabes_direct_satker.sql db/migrations/007_missing_regional_polres.sql db/migrations/008_satker_unit_structure.sql db/migrations/009_subdit_unit_hierarchy.sql db/migrations/010_polda_satbrimob.sql db/migrations/011_mabes_sotk_stage1.sql db/migrations/012_mabes_sotk_stage1_support.sql db/migrations/013_mabes_sotk_stage2_bareskrim_itwasum.sql db/migrations/014_deactivate_mabes_placeholders.sql db/migrations/015_polri_personnel_identity.sql; do psql "$DEMO_DATABASE_URL" -f "$migration"; done
+for migration in db/migrations/*.sql; do
+  psql "$DEMO_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+done
 psql "$DEMO_DATABASE_URL" -f db/seed/demo_merit_system.sql
 ```
 

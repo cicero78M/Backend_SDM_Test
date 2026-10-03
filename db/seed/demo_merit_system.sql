@@ -12,6 +12,11 @@ SELECT 'DEMO-SATKER', 'Demo Satker', 'SATKER', id_satker, TRUE
 FROM satker WHERE kode_satker = 'DEMO-POLDA'
 ON CONFLICT (kode_satker) DO UPDATE SET is_active = TRUE;
 
+-- Master minimal agar seed demo dapat dijalankan pada database baru.
+INSERT INTO jabatan (id_jabatan, nama_jabatan, jenis_jabatan)
+VALUES (990001, 'Jabatan Demo', 'PELAKSANA')
+ON CONFLICT (id_jabatan) DO NOTHING;
+
 INSERT INTO users (username, password_hash, role, is_active)
 VALUES
   ('demo_admin_ssdm', '$2a$12$VFbnCwQSE1CAbHVFRbXroehPcFEHnejZSZxAMExfKyiQY9uKzlQUq', 'admin_ssdm', TRUE),
