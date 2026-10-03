@@ -225,6 +225,20 @@ export function registerAuthRoutes(router) {
   });
   // Mengembalikan profil user dari token yang sedang aktif.
   router.get('/auth/me', authenticate, (req, res) => res.json({ user: req.user }));
+  // Mengembalikan detail profil akun yang sedang aktif.
+  router.get('/auth/me/profile', authenticate, async (req, res, next) => {
+    try {
+      const result = await query(`SELECT u.id_user, u.username, u.email, u.role, u.is_active, u.created_at,
+          r.nama, r.jenis_personel, r.pangkat, r.id_golongan, r.nip, r.satker_asal,
+          s.nama_satker, s.kode_satker
+        FROM users u
+        LEFT JOIN registration_requests r ON r.username=u.username AND r.status='approved'
+        LEFT JOIN satker s ON s.id_satker=r.id_satker
+        WHERE u.id_user=$1`, [req.user.id_user]);
+      if (!result.rows[0]) return res.status(404).json({ error: 'Profil user tidak ditemukan.' });
+      return res.json({ profile: result.rows[0] });
+    } catch (error) { return next(error); }
+  });
   
   // Log perubahan data yang terlihat sesuai role dan scope organisasi user.
 }

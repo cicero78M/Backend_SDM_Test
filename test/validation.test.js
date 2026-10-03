@@ -40,6 +40,14 @@ test('validasi menolak identitas yang bukan NRP/NIP 8–18 digit', () => {
   assert.deepEqual(result.error.map(item => item.field), ['nip']);
 });
 
+test('validasi mengembalikan label dan alasan yang jelas untuk input personel kosong', () => {
+  const result = validate(personnelSchema, {});
+  const byField = Object.fromEntries(result.error.map(item => [item.field, item]));
+  assert.equal(byField.nama.label, 'nama lengkap');
+  assert.equal(byField.nama.message, 'nama lengkap wajib diisi.');
+  assert.equal(byField.id_unit.message, 'unit kerja wajib diisi.');
+});
+
 test('validasi menolak histori dengan tanggal selesai sebelum tanggal mulai', () => {
   const result = validate(jobHistorySchema, {
     id_jabatan: 1,
