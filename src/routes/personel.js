@@ -1,4 +1,4 @@
-import { employeeSelect } from "./shared.js";
+import { personnelSelect } from "./shared.js";
 import { randomBytes } from 'node:crypto';
 // Mengimpor helper password, JWT, authentication, dan authorization.
 import { comparePassword, hashPassword, hashResetToken, signToken, authenticate, authorize } from '../auth.js';
