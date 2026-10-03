@@ -1,26 +1,26 @@
-# API routes
+# Route API
 
-`index.js` is the composition root mounted by `server.js` at `/api/v1`.
-Each domain module owns its endpoint registration. The refactor is behavior
-preserving: URLs, methods, middleware, response shapes, and authorization
-rules remain unchanged.
+`index.js` adalah composition root yang dipasang oleh `server.js` pada
+`/api/v1`. Setiap modul domain mengelola pendaftaran endpoint-nya sendiri.
+Refactor ini mempertahankan perilaku aplikasi: URL, method, middleware,
+bentuk respons, dan aturan otorisasi tetap tidak berubah.
 
-## Route inventory
+## Inventaris route
 
-| Domain | Prefixes | Main responsibility |
+| Domain | Prefix | Tanggung jawab utama |
 | --- | --- | --- |
-| `auth.js` | `/auth/*`, `/public/*` | Login, registration, OTP, password, users, scopes, public selectors |
-| `audit.js` | `/audit-log` | Scoped audit-log search |
-| `pegawai.js` | `/pegawai/*` | Legacy personnel CRUD |
-| `master.js` | `/master/*` | Satker, unit, position, rank, and reference data |
-| `dashboard.js` | `/dashboard/*` | Aggregated selection overview |
-| `personel.js` | `/personel/*`, `/merit/*` | Personnel CRUD, profile, education, training, history, merit |
+| `auth.js` | `/auth/*`, `/public/*` | Login, registrasi, OTP, kata sandi, pengguna, scope, dan selector publik |
+| `audit.js` | `/audit-log` | Pencarian log audit berdasarkan scope |
+| `pegawai.js` | `/pegawai/*` | CRUD personel lama |
+| `master.js` | `/master/*` | Data Satker, unit, jabatan, pangkat, dan referensi |
+| `dashboard.js` | `/dashboard/*` | Ringkasan seleksi teragregasi |
+| `personel.js` | `/personel/*`, `/merit/*` | CRUD personel, profil, pendidikan, pelatihan, riwayat, dan merit |
 
-## Audit checklist
+## Checklist audit
 
-- Add a new endpoint to the domain module matching its prefix.
-- Keep `authenticate`/`authorize` middleware visible beside the endpoint.
-- Keep request validation at the route boundary with `validate(...)`.
-- Keep database writes transactional where more than one table is changed.
-- Add or update route-level tests before changing response contracts.
-- Run `npm test` and review `git diff --stat` plus the endpoint inventory.
+- Tambahkan endpoint baru pada modul domain yang sesuai dengan prefix-nya.
+- Pertahankan middleware `authenticate`/`authorize` tetap terlihat di dekat endpoint.
+- Pertahankan validasi request pada batas route menggunakan `validate(...)`.
+- Pastikan penulisan database bersifat transaksional ketika lebih dari satu tabel diubah.
+- Tambahkan atau perbarui test level route sebelum mengubah kontrak respons.
+- Jalankan `npm test`, lalu tinjau `git diff --stat` dan inventaris endpoint.
