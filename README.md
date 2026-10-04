@@ -45,6 +45,26 @@ PostgreSQL         (personel, master organisasi, riwayat jabatan, users)
 
 Frontend tidak menyimpan secret. Keputusan permission tetap dilakukan backend walaupun menu/aksi frontend dapat disesuaikan berdasarkan role.
 
+## Kredensial demo
+
+Seed `db/seed/demo_merit_system.sql` menyediakan akun berikut untuk lingkungan
+demo/non-produksi:
+
+| Role | Username | Password |
+|---|---|---|
+| Admin SSDM | `demo_admin_ssdm` | `Demo-Admin-2026!` |
+| Operator Polda | `demo_operator_polda` | `Demo-Operator-2026!` |
+| Operator Satker | `demo_operator_satker` | `Demo-Operator-2026!` |
+
+Jalankan seed setelah schema dan migrasi siap:
+
+```bash
+psql "$DATABASE_URL" -f db/seed/demo_merit_system.sql
+```
+
+Kredensial ini hanya untuk demo lokal/non-produksi. Jangan gunakan pada
+lingkungan produksi.
+
 ## Kompetensi yang dicakup
 
 | Kompetensi | Implementasi saat ini |
@@ -136,6 +156,7 @@ Semua endpoint selain register/login/verify-email/resend-otp memerlukan header `
 - `POST /api/v1/auth/register/verify-email` — validasi OTP 6 digit sebelum registrasi masuk antrean approval.
 - `POST /api/v1/auth/register/resend-otp` — mengirim ulang OTP setelah cooldown.
 - `POST /api/v1/auth/login` — login dan memperoleh JWT.
+- `GET /api/v1/auth/me/profile` — mengambil profil akun pengguna yang sedang login berdasarkan JWT.
 - `POST /api/v1/auth/forgot-password` — meminta reset password menggunakan username atau email; instruksi dikirim ke email terdaftar.
 - `POST /api/v1/auth/reset-password` — menetapkan password baru memakai token satu kali dari email reset.
 - `GET /api/v1/auth/registrations/pending` — daftar registrasi yang sudah memvalidasi email dan menunggu approval; hanya role `admin` pertama.
