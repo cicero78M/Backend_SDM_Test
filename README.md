@@ -177,7 +177,9 @@ Semua endpoint selain register/login/verify-email/resend-otp memerlukan header `
 Endpoint berikut tersedia setelah migration schema Merit System diterapkan:
 
 - `GET/POST/PUT/DELETE /api/v1/personel`
-- `GET/PUT/DELETE /api/v1/personel/:id` — detail, perubahan, dan penghapusan berbasis scope.
+- `GET /api/v1/personel/:id` — detail personel berbasis scope.
+- `PUT /api/v1/personel/:id` — memperbarui personel; duplikasi NRP/NIP atau NIK mengembalikan `409 Conflict`.
+- `DELETE /api/v1/personel/:id` — penghapusan berbasis scope.
 - `GET/POST/PUT/DELETE /api/v1/personel/:id/riwayat-jabatan`
 - `GET /api/v1/personel/:id/profile` — identitas, jabatan aktif, dan histori kronologis.
 - `GET/POST/PUT/DELETE /api/v1/personel/:id/pendidikan` — kualifikasi pendidikan personel.
@@ -186,6 +188,10 @@ Endpoint berikut tersedia setelah migration schema Merit System diterapkan:
 - `GET /api/v1/auth/users/:id/scopes` — melihat scope Satker user oleh admin.
 - `PUT /api/v1/auth/users/:id/scopes` — mengganti scope Satker user secara transaksional oleh admin.
 - `GET /api/v1/dashboard/overview` — agregasi visualisasi personel, status, golongan/pangkat terpisah untuk POLRI dan ASN, kelompok jabatan/nivelering, jenjang pendidikan, diklat, mutasi, kualitas data, kelompok usia, lama dinas, dan proyeksi pensiun sesuai scope user. Ringkasan diklat dan mutasi mencakup personel yang pernah, belum pernah, serta memiliki lebih dari satu riwayat.
+- `GET /api/v1/merit/indicators` dan `GET /api/v1/merit/periods` — membaca indikator aktif dan periode penilaian.
+- `GET /api/v1/personel/:id/merit` — membaca total skor berbobot dan assessment personel pada periode aktif atau periode yang diminta.
+- `POST /api/v1/personel/:id/merit-assessments` — membuat atau memperbarui nilai indikator personel; hanya administrator yang dapat menetapkan status `DIVERIFIKASI`.
+- `DELETE /api/v1/personel/:id/merit-assessments/:assessmentId` — menghapus assessment sesuai scope.
 
 Endpoint master yang dipakai form personel dan riwayat jabatan:
 
@@ -322,7 +328,7 @@ psql "$DATABASE_URL" -X -c "SELECT table_name FROM information_schema.tables WHE
 
 ## Dokumentasi API dan pengujian
 
-Dokumentasi request/response tersedia di [`docs/openapi.yaml`](docs/openapi.yaml) dan dapat diimpor ke Swagger Editor. Alur smoke test dan CRUD utama tersedia di [`postman/merit-system.postman_collection.json`](postman/merit-system.postman_collection.json). Isi username/password dan ID master pada environment Postman lokal; collection tidak menyimpan kredensial demo.
+Dokumentasi request/response tersedia di [`docs/openapi.yaml`](docs/openapi.yaml) dan dapat diimpor ke Swagger Editor. Dokumentasi tersebut mencakup endpoint authentication, personel, histori/kualifikasi, dashboard, master data, dan penilaian Merit System, termasuk response `409 Conflict` pada update personel. Alur smoke test dan CRUD utama tersedia di [`postman/merit-system.postman_collection.json`](postman/merit-system.postman_collection.json). Isi username/password dan ID master pada environment Postman lokal; collection tidak menyimpan kredensial demo.
 
 Contoh request:
 

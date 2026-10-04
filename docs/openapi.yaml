@@ -95,7 +95,7 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/PersonelRequest' } } }
-      responses: { '200': { description: Personel diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+      responses: { '200': { description: Personel diperbarui dengan projection yang sama seperti daftar personel }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Personel tidak ditemukan }, '409': { $ref: '#/components/responses/Conflict' } }
     delete:
       security: [{ bearerAuth: [] }]
       summary: Menghapus personel dalam scope user yang berwenang
@@ -437,3 +437,4 @@ components:
     BadRequest: { description: Request tidak valid }
     Unauthorized: { description: Token tidak valid atau tidak ada }
     Forbidden: { description: Permission ditolak }
+    Conflict: { description: NRP/NIP atau NIK sudah digunakan personel lain }
