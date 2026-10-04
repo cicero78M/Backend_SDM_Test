@@ -322,6 +322,23 @@ export function registerPersonelRoutes(router) {
       const { id_satker, nip, jenis_personel, jenis_identitas, nik, nama, jenis_kelamin, tempat_lahir, tanggal_lahir, tanggal_masuk, id_unit, id_jabatan, id_golongan, pangkat, nama_polsek, id_atasan, status_pegawai, batas_usia_pensiun } = parsed.data;
       const selectedUnit = await query('SELECT kode_unit FROM unit_kerja WHERE id_unit=$1 AND id_satker=$2 AND is_active=true', [id_unit, id_satker]);
       if (selectedUnit.rows[0]?.kode_unit === 'POLSEK' && !nama_polsek) return res.status(400).json({ error: 'Nama Polsek wajib diisi untuk unit Kepolisian Sektor.' });
+      // Beri respons yang spesifik sebelum UPDATE agar operator mengetahui
+      // identitas mana yang sudah dipakai personel lain, bukan error 23505 generik.
+      const duplicate = await query(`SELECT id_pegawai,
+          CASE WHEN nip=$1 THEN 'nip' ELSE 'nik' END AS field,
+          CASE WHEN nip=$1 THEN nip ELSE nik END AS value,
+          nama
+        FROM pegawai
+        WHERE id_pegawai <> $3 AND (nip=$1 OR nik=$2)
+        LIMIT 1`, [nip, nik, req.params.id]);
+      if (duplicate.rows[0]) {
+        const conflict = duplicate.rows[0];
+        const label = conflict.field === 'nip' ? 'NRP/NIP' : 'NIK';
+        return res.status(409).json({
+          error: `Data duplikat: ${label} sudah digunakan oleh ${conflict.nama || 'personel lain'}.`,
+          details: [{ field: conflict.field, label, value: conflict.value, id_pegawai: conflict.id_pegawai }]
+        });
+      }
       const allowedJob = await query("SELECT 1 FROM jabatan_unit_kerja WHERE id_jabatan=$1 AND id_unit=$2 AND is_active=true AND sumber <> 'legacy-assignment'", [id_jabatan, id_unit]);
       if (!allowedJob.rows[0]) {
         const currentJob = await query('SELECT id_jabatan FROM pegawai WHERE id_pegawai=$1', [req.params.id]);
@@ -334,7 +351,7 @@ export function registerPersonelRoutes(router) {
         const positionChanged = Number(previous.rows[0].id_jabatan) !== Number(id_jabatan)
           || Number(previous.rows[0].id_unit) !== Number(id_unit)
           || Number(previous.rows[0].id_satker) !== Number(id_satker);
-        const updated = await client.query(`UPDATE pegawai SET nip=$1,jenis_personel=$2,jenis_identitas=$3,nik=$4,nama=$5,jenis_kelamin=$6,tempat_lahir=$7,tanggal_lahir=$8,tanggal_masuk=$9,id_unit=$10,id_jabatan=$11,id_golongan=$12,pangkat=$13,nama_polsek=$14,id_atasan=$15,status_pegawai=$16,batas_usia_pensiun=$17,id_satker=$18 WHERE id_pegawai=$19 RETURNING *`, [nip,jenis_personel,jenis_identitas,nik,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,tanggal_masuk,id_unit,id_jabatan,id_golongan,pangkat,nama_polsek,id_atasan,status_pegawai,batas_usia_pensiun,id_satker,req.params.id]);
+        const updated = await client.query(`UPDATE pegawai SET nip=$1,jenis_personel=$2,jenis_identitas=$3,nik=$4,nama=$5,jenis_kelamin=$6,tempat_lahir=$7,tanggal_lahir=$8,tanggal_masuk=$9,id_unit=$10,id_jabatan=$11,id_golongan=$12,pangkat=$13,nama_polsek=$14,id_atasan=$15,status_pegawai=$16,batas_usia_pensiun=$17,id_satker=$18 WHERE id_pegawai=$19 RETURNING id_pegawai`, [nip,jenis_personel,jenis_identitas,nik,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,tanggal_masuk,id_unit,id_jabatan,id_golongan,pangkat,nama_polsek,id_atasan,status_pegawai,batas_usia_pensiun,id_satker,req.params.id]);
         if (positionChanged) {
           await client.query(`UPDATE riwayat_jabatan r
             SET tanggal_selesai=GREATEST(COALESCE(r.tanggal_mulai,CURRENT_DATE),CURRENT_DATE),
@@ -350,8 +367,12 @@ export function registerPersonelRoutes(router) {
       }));
       if (!result.rows[0]) return res.status(404).json({ error: 'Personel tidak ditemukan.' });
       await invalidateKeys(['master:status-personel', `profile:${req.params.id}`]);
-      await writeAudit(req, 'UPDATE', 'personel', req.params.id, { after: result.rows[0] });
-      return res.json({ data: result.rows[0] });
+      // Kembalikan projection yang sama dengan GET /personel agar response
+      // update tidak memiliki bentuk berbeda dan tidak menimbulkan append data
+      // ganda di consumer frontend.
+      const refreshed = await query(`${personnelSelect} WHERE p.id_pegawai = $1`, [req.params.id]);
+      await writeAudit(req, 'UPDATE', 'personel', req.params.id, { after: refreshed.rows[0] });
+      return res.json({ data: refreshed.rows[0] });
     } catch (error) { return next(error); }
   });
   
