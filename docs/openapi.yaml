@@ -2,9 +2,12 @@ openapi: 3.0.3
 info:
   title: Backend SDM Test - REST API
   version: 1.0.0
-  description: API Merit System Personel Polri untuk CRUD personel dan riwayat jabatan dengan JWT, validasi, role, dan scope organisasi.
+  description: API Merit System Personel Polri untuk CRUD personel dan riwayat jabatan dengan JWT, validasi, role, scope organisasi, dan response error terstandar.
 servers:
   - url: http://localhost:3000/api/v1
+    description: Development lokal
+  - url: https://103.93.129.65/api/v1
+    description: Deployment HTTPS berbasis IP
 paths:
   /auth/register:
     post:
@@ -12,7 +15,7 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } }
-      responses: { '201': { description: OTP validasi email dikirim }, '400': { $ref: '#/components/responses/BadRequest' }, '503': { description: Email OTP gagal dikirim } }
+      responses: { '201': { description: OTP validasi email dikirim }, '400': { $ref: '#/components/responses/BadRequest' }, '413': { $ref: '#/components/responses/PayloadTooLarge' }, '503': { description: Email OTP gagal dikirim }, '500': { $ref: '#/components/responses/ServerError' } }
   /auth/register/verify-email:
     post:
       summary: Memvalidasi OTP email registrasi
@@ -49,7 +52,7 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/PegawaiRequest' } } }
-      responses: { '201': { description: Data dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+      responses: { '201': { description: Data dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' }, '413': { $ref: '#/components/responses/PayloadTooLarge' }, '500': { $ref: '#/components/responses/ServerError' } }
   /pegawai/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
     get:
@@ -62,7 +65,7 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/PegawaiRequest' } } }
-      responses: { '200': { description: Data diperbarui }, '400': { $ref: '#/components/responses/BadRequest' } }
+      responses: { '200': { description: Data diperbarui }, '400': { $ref: '#/components/responses/BadRequest' }, '413': { $ref: '#/components/responses/PayloadTooLarge' }, '500': { $ref: '#/components/responses/ServerError' } }
     delete:
       security: [{ bearerAuth: [] }]
       summary: Menghapus pegawai (admin)
@@ -82,7 +85,7 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/PersonelRequest' } } }
-      responses: { '201': { description: Personel berhasil dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' } }
+      responses: { '201': { description: Personel berhasil dibuat }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' }, '413': { $ref: '#/components/responses/PayloadTooLarge' }, '500': { $ref: '#/components/responses/ServerError' } }
   /personel/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
     get:
@@ -95,7 +98,7 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/PersonelRequest' } } }
-      responses: { '200': { description: Personel diperbarui dengan projection yang sama seperti daftar personel }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Personel tidak ditemukan }, '409': { $ref: '#/components/responses/Conflict' } }
+      responses: { '200': { description: Personel diperbarui dengan projection yang sama seperti daftar personel }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Personel tidak ditemukan }, '409': { $ref: '#/components/responses/Conflict' }, '413': { $ref: '#/components/responses/PayloadTooLarge' }, '500': { $ref: '#/components/responses/ServerError' } }
     delete:
       security: [{ bearerAuth: [] }]
       summary: Menghapus personel dalam scope user yang berwenang
@@ -371,6 +374,22 @@ paths:
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   schemas:
+    ErrorDetail:
+      type: object
+      properties:
+        field: { type: string, description: Nama field yang gagal divalidasi }
+        label: { type: string, description: Label field yang ramah operator }
+        message: { type: string, description: Alasan validasi gagal }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: Pesan error yang aman ditampilkan ke client }
+        code: { type: string, nullable: true, description: Kode error opsional untuk client }
+        details:
+          type: array
+          description: Detail validasi per field jika tersedia.
+          items: { $ref: '#/components/schemas/ErrorDetail' }
     RegisterRequest: { type: object, required: [username, email, nama, pangkat, nip, satker_asal, password], properties: { username: { type: string, minLength: 3 }, email: { type: string, format: email }, nama: { type: string }, pangkat: { type: string }, nip: { type: string }, satker_asal: { type: string }, password: { type: string, minLength: 8 } } }
     RegisterVerifyEmailRequest: { type: object, required: [registration_id, otp], properties: { registration_id: { type: integer, minimum: 1 }, otp: { type: string, pattern: '^\d{6}$' } } }
     RegisterResendOtpRequest: { type: object, required: [registration_id], properties: { registration_id: { type: integer, minimum: 1 } } }
@@ -434,7 +453,43 @@ components:
         nomor_sertifikat: { type: string, maxLength: 100, nullable: true }
         keterangan: { type: string, maxLength: 1000, nullable: true }
   responses:
-    BadRequest: { description: Request tidak valid }
-    Unauthorized: { description: Token tidak valid atau tidak ada }
-    Forbidden: { description: Permission ditolak }
-    Conflict: { description: NRP/NIP atau NIK sudah digunakan personel lain }
+    BadRequest:
+      description: Request tidak valid, JSON rusak, format data salah, atau validasi schema gagal.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          examples:
+            validation:
+              value:
+                error: Validasi gagal.
+                details:
+                  - { field: nip, label: NRP/NIP, message: NRP POLRI harus tepat 8 digit. }
+            malformedJson:
+              value: { error: Format JSON request tidak valid. }
+    Unauthorized:
+      description: Token Bearer tidak valid, tidak ada, kedaluwarsa, atau user tidak aktif.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Permission atau scope organisasi tidak mengizinkan operasi.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Konflik data, termasuk NRP/NIP atau NIK yang sudah digunakan personel lain.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    PayloadTooLarge:
+      description: Body request melebihi batas 100 KB.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: Ukuran request terlalu besar. }
+    ServerError:
+      description: Kesalahan internal yang tidak terduga. Detail teknis hanya dicatat di log server.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: Terjadi kesalahan pada server. }
