@@ -207,6 +207,40 @@ mapping jabatan-unit, status, serta rentang tanggal di backend. Role
 `operator_polres` wajib menggunakan Satker personel saat menambah atau mengubah
 riwayat; backend menolak Satker lain walaupun payload dikirim langsung ke API.
 
+### Penanganan error API
+
+Error route diproses oleh error handler terpusat di `src/server.js`. Backend tidak
+mengirim stack trace atau detail internal database ke client.
+
+| Kondisi | HTTP | Response utama |
+|---|---:|---|
+| Token tidak ada, tidak valid, atau kedaluwarsa | `401` | Pesan token Bearer |
+| Role tidak memiliki permission | `403` | Permission ditolak |
+| Endpoint atau resource tidak ditemukan | `404` | Endpoint/resource tidak ditemukan |
+| JSON request rusak | `400` | `Format JSON request tidak valid.` |
+| Format nilai tidak sesuai tipe PostgreSQL | `400` | `Format data tidak valid.` |
+| Foreign key atau referensi master tidak valid | `400` | `Referensi data tidak valid.` |
+| Validasi schema gagal | `400` | `Validasi gagal.` dengan `details` per field |
+| Data melanggar unique constraint | `409` | `Data duplikat.` |
+| Konflik lock atau update identitas duplikat | `409` | Pesan konflik spesifik |
+| Body request melebihi batas 100 KB | `413` | `Ukuran request terlalu besar.` |
+| Error internal yang tidak terduga | `500` | `Terjadi kesalahan pada server.` |
+
+Contoh response validasi:
+
+```json
+{
+  "error": "Validasi gagal.",
+  "details": [
+    { "field": "nip", "label": "NRP/NIP", "message": "NRP POLRI harus tepat 8 digit." }
+  ]
+}
+```
+
+Client wajib menangani status non-2xx, tidak menganggap response `500` sebagai
+data kosong, dan menampilkan pesan yang sesuai kepada operator. Detail teknis
+tetap dicatat di log server untuk diagnosis.
+
 Riwayat jabatan mendukung jabatan, Satker, fungsi, tanggal mulai, tanggal berakhir, nivelering, status, dan keterangan. Validasi mencegah format payload yang salah; constraint database mencegah tanggal terbalik dan lebih dari satu histori aktif untuk personel yang sama.
 
 Migration `db/migrations/017_personnel_education_training.sql` menambahkan tabel domain `riwayat_pendidikan_personel` dan `riwayat_diklat_personel`. Migration `038_backfill_legacy_personnel_history.sql` mengisi domain secara idempoten dari data legacy dan menambahkan `riwayat_mutasi_personel`; sumber legacy tidak dihapus atau diubah. Migration `039_backfill_and_track_current_position.sql` membentuk histori awal dari jabatan aktif seluruh personel yang memiliki referensi jabatan/Satker. Migration `040_position_history_status.sql` menambahkan status aktif/nonaktif untuk histori jabatan. Perubahan jabatan, unit, atau Satker berikutnya dicatat otomatis oleh endpoint pembaruan personel dalam transaksi; histori lama ditutup dan diberi status nonaktif sebelum histori baru aktif dibuat. Profil personel mengembalikan data domain dan memakai legacy sebagai fallback tanpa duplikasi.
@@ -351,7 +385,7 @@ npm test
 
 Suite saat ini mencakup validasi POLRI/NRP, ASN/NIP, chronology tanggal,
 validasi scope, permission role, pendidikan, dan diklat; hasil terakhir
-**10/10 lulus**. Jalankan `npm test` sebelum pengumpulan. Untuk uji alur
+**18/18 lulus**. Jalankan `npm test` sebelum pengumpulan. Untuk uji alur
 CRUD berbasis database demo, gunakan Postman collection atau runner E2E;
 keduanya memerlukan database demo dan kredensial lokal.
 
