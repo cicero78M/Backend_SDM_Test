@@ -56,12 +56,17 @@ app.use((_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.'
 app.use((error, _req, res, _next) => {
   // Mencatat detail error di server tanpa mengirim stack trace ke client.
   console.error(error);
+  // Parser JSON Express menandai body rusak dan body terlalu besar dengan type khusus.
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Format JSON request tidak valid.' });
+  if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Ukuran request terlalu besar.' });
   // PostgreSQL code 23505 berarti pelanggaran unique constraint.
   if (error.code === '23505') return res.status(409).json({ error: 'Data duplikat.' });
   // PostgreSQL code 23503 berarti foreign key tidak valid.
   if (error.code === '23503') return res.status(400).json({ error: 'Referensi data tidak valid.' });
+  // PostgreSQL code 22P02 berarti format nilai tidak sesuai tipe kolom.
+  if (error.code === '22P02') return res.status(400).json({ error: 'Format data tidak valid.' });
   if (error.code === 'REDIS_LOCK_BUSY') return res.status(409).json({ error: error.message });
-  if (error.statusCode) return res.status(error.statusCode).json({ error: error.publicMessage || 'Layanan email tidak tersedia.' });
+  if (error.statusCode || error.status) return res.status(error.statusCode || error.status).json({ error: error.publicMessage || error.message || 'Request tidak dapat diproses.' });
   // Semua error lain dikembalikan sebagai internal server error generik.
   return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
 });
